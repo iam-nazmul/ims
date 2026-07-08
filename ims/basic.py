@@ -154,10 +154,14 @@ class ProductDetailDialog(QDialog):
         form = QFormLayout()
         self.code = QLineEdit()
         self.code.setReadOnly(True)
-        self.company = LookupField("All Companies", ["Code", "Name"],
-                                   "SELECT id, code, name FROM companies WHERE name ILIKE %s ORDER BY code")
-        self.category = LookupField("All Category", ["Code", "Name"],
-                                    "SELECT id, code, name FROM categories WHERE name ILIKE %s ORDER BY code")
+        self.company = LookupField(
+            "All Companies", ["Code", "Name"],
+            "SELECT id, code, name FROM companies WHERE name ILIKE %s ORDER BY code",
+            new_form_factory=lambda p: SimpleNameForm("companies", "Company", None, p))
+        self.category = LookupField(
+            "All Category", ["Code", "Name"],
+            "SELECT id, code, name FROM categories WHERE name ILIKE %s ORDER BY code",
+            new_form_factory=lambda p: SimpleNameForm("categories", "Category", None, p))
         self.ptype = QComboBox()
         self.ptype.addItems(["NoBarCode", "BarCode"])
         self.model = QLineEdit()

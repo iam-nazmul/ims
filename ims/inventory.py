@@ -9,6 +9,8 @@ from .db import db, money
 from .widgets import (DIALOG_QSS, DataTable, ListDialog, LookupField, SearchBar,
                       dedit, pydate, dspin, info, error, confirm,
                       html_table, preview_html)
+from .basic import ProductDetailDialog
+from .people import CustomerForm, SupplierForm
 
 PRODUCT_PICK_SQL = """
     SELECT p.id, p.code, p.model_name AS name, c.name AS category, p.stock_qty,
@@ -29,7 +31,8 @@ CUSTOMER_PICK_SQL = """
 
 def product_lookup(parent) -> LookupField:
     return LookupField("Products", ["Code", "Model", "Category", "Stock", "Pur.Rate", "Sales Rate", "MRP"],
-                       PRODUCT_PICK_SQL, parent)
+                       PRODUCT_PICK_SQL, parent,
+                       new_form_factory=lambda p: ProductDetailDialog(None, p))
 
 
 def stock_tab() -> QWidget:
@@ -85,7 +88,8 @@ class PurchaseOrderForm(QDialog):
         self.pur_date = dedit()
         self.challan = QLineEdit()
         self.supplier = LookupField("All Suppliers", ["Code", "Name", "Contact No", "Total Due"],
-                                    SUPPLIER_PICK_SQL)
+                                    SUPPLIER_PICK_SQL,
+                                    new_form_factory=lambda p: SupplierForm(None, p))
         self.supplier.selected.connect(self._supplier_picked)
         self.prev_due = dspin(read_only=True)
         sgrid.addWidget(QLabel("Pur. Date"), 0, 0); sgrid.addWidget(self.pur_date, 0, 1)
@@ -582,7 +586,8 @@ class SalesOrderForm(QDialog):
         self.sales_date = dedit()
         self.prev_due = dspin(read_only=True)
         self.customer = LookupField("Customers", ["Code", "Name", "Contact", "Address", "Due"],
-                                    CUSTOMER_PICK_SQL)
+                                    CUSTOMER_PICK_SQL,
+                                    new_form_factory=lambda p: CustomerForm(None, p))
         self.customer.selected.connect(
             lambda rec: self.prev_due.setValue(float(rec.get("total_due") or 0)))
         self.remind = dedit()
@@ -1145,7 +1150,8 @@ class CreditSaleForm(QDialog):
         self.sales_date = dedit()
         self.prev_due = dspin(read_only=True)
         self.customer = LookupField("Customers", ["Code", "Name", "Contact", "Address", "Due"],
-                                    CUSTOMER_PICK_SQL)
+                                    CUSTOMER_PICK_SQL,
+                                    new_form_factory=lambda p: CustomerForm(None, p))
         self.customer.selected.connect(
             lambda rec: self.prev_due.setValue(float(rec.get("total_due") or 0)))
         cgrid.addWidget(QLabel("Invoice"), 0, 0); cgrid.addWidget(self.invoice, 0, 1)

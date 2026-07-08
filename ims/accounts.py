@@ -8,6 +8,7 @@ from .db import db, money
 from .widgets import (DIALOG_QSS, DataTable, ListDialog, LookupField, SearchBar,
                       dedit, pydate, dspin, info, error)
 from .inventory import CUSTOMER_PICK_SQL, SUPPLIER_PICK_SQL
+from .people import CustomerForm, SupplierForm
 
 
 class CashCollectionForm(QDialog):
@@ -24,7 +25,8 @@ class CashCollectionForm(QDialog):
         self.receipt = QLineEdit(f"R-{db().next_serial('cash_collections'):05d}")
         self.receipt.setReadOnly(True)
         self.customer = LookupField("Customers", ["Code", "Name", "Contact", "Address", "Due"],
-                                    CUSTOMER_PICK_SQL)
+                                    CUSTOMER_PICK_SQL,
+                                    new_form_factory=lambda p: CustomerForm(None, p))
         self.customer.selected.connect(
             lambda rec: self.total_due.setValue(float(rec.get("total_due") or 0)))
         self.pay_type = QComboBox()
@@ -148,7 +150,8 @@ class CashDeliveryForm(QDialog):
         self.voucher = QLineEdit(f"V-{db().next_serial('cash_deliveries'):05d}")
         self.voucher.setReadOnly(True)
         self.supplier = LookupField("All Suppliers", ["Code", "Name", "Contact No", "Total Due"],
-                                    SUPPLIER_PICK_SQL)
+                                    SUPPLIER_PICK_SQL,
+                                    new_form_factory=lambda p: SupplierForm(None, p))
         self.supplier.selected.connect(
             lambda rec: self.total_due.setValue(float(rec.get("total_due") or 0)))
         self.pay_type = QComboBox(); self.pay_type.addItems(["Cash", "Check", "Mobile Bank"])
