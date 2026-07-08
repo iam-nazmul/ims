@@ -149,12 +149,10 @@ class MainWindow(QMainWindow):
             b.clicked.connect(lambda checked=False, f=fn: (f(), self.refresh()))
             tlay.addWidget(b)
         tlay.addStretch(1)
-        banner = QLabel(
-            "<div style='color:white'><span style='font-size:26pt;font-family:Georgia'>"
-            "Shahajahan Enterprise</span><br>"
-            "<i style='font-size:11pt;color:#ffe97a'>Inventory Management Software (IMS)</i></div>")
-        banner.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        tlay.addWidget(banner)
+        self.banner = QLabel()
+        self.banner.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self._update_banner()
+        tlay.addWidget(self.banner)
         lay.addWidget(top)
 
         # dashboard grids
@@ -191,14 +189,23 @@ class MainWindow(QMainWindow):
         clay.addLayout(right, 2)
         lay.addWidget(content, 1)
 
-        footer = QLabel("Developed By © Object Canvas Technology")
+        footer = QLabel("Developed By © SOFTIFE")
         footer.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         footer.setStyleSheet("background-color: #0b1f8f; color: white; font-size: 14pt;"
                              "font-family: Georgia; font-weight: bold; padding: 8px;")
         lay.addWidget(footer)
 
     # -- dashboard data ---------------------------------------------------------
+    def _update_banner(self):
+        si = db().fetch_one("SELECT company_name FROM system_info WHERE id = 1") or {}
+        name = si.get("company_name") or "Shahajahan Enterprise"
+        self.banner.setText(
+            "<div style='color:white'><span style='font-size:26pt;font-family:Georgia'>"
+            f"{name}</span><br>"
+            "<i style='font-size:11pt;color:#ffe97a'>Inventory Management Software (IMS)</i></div>")
+
     def refresh(self):
+        self._update_banner()
         s = f"%{self.cust_search.edit.text().strip()}%"
         rows = db().fetch_all(
             """SELECT c.id, c.code, c.name, c.contact_no, c.address, d.total_due,

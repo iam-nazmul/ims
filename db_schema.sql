@@ -291,7 +291,7 @@ INSERT INTO users (username, password_hash, full_name) VALUES
 ('admin', '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918', 'Administrator');
 
 INSERT INTO system_info (id, company_name, company_address, telephone_no, email_address, web_address, system_start_date)
-VALUES (1, 'Shahajahan Enterprise', 'Kesorhat, Mohanpur, Rajshahi', '+88019000000', '', '', '2018-12-01');
+VALUES (1, 'Shahajahan Enterprise', 'Kesorhat, Mohanpur, Rajshahi', '+8801761777748', '', '', '2018-12-01');
 
 INSERT INTO companies (code, name) VALUES
 ('00001', 'UNITECH'), ('00002', 'MINISTER'), ('00003', 'VIGO'),

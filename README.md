@@ -70,3 +70,6 @@ git remote add origin git@github.com:iam-nazmul/ims.git
 git branch -M main
 git push -u origin main
 ```
+
+
+sudo -u postgres psql -c "ALTER USER nazmul WITH PASSWORD '123456';"
