@@ -63,3 +63,10 @@ ims/
   accounts.py        cash collection/delivery, bank, income, expense, investments
   reports.py         All Report window and every report
 ```
+
+
+```
+git remote add origin git@github.com:iam-nazmul/ims.git
+git branch -M main
+git push -u origin main
+```
