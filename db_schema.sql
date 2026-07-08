@@ -335,7 +335,7 @@ INSERT INTO products (code, company_id, category_id, model_name, warning_qty,
 ('000020', 5, 8, 'ES-114',      2,   750.00,  1050.00,  1050.00, 9);
 
 INSERT INTO employees (code, name, contact_no, designation, joining_date, gross_salary) VALUES
-('00001', 'SAJAD', '01700000001', 'Show Room Manager', '2019-01-01', 15000);
+('00001', 'SAJAD', '01761777748', 'Show Room Manager', '2019-01-01', 15000);
 
 INSERT INTO customers (code, name, contact_no, address, customer_type, opening_due) VALUES
 ('NEW001', 'AJIJUL',      '01734240328', 'MIJAPUR BAGMARA',   'Retail', 3499.98),

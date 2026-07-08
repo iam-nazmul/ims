@@ -174,7 +174,7 @@ class MainWindow(QMainWindow):
         left.addWidget(cust_print, 0, Qt.AlignmentFlag.AlignLeft)
         clay.addLayout(left, 3)
 
-        clay.addStretch(1)
+        clay.addSpacing(8)
 
         right = QVBoxLayout()
         self.prod_search = SearchBar()
@@ -200,7 +200,7 @@ class MainWindow(QMainWindow):
         si = db().fetch_one("SELECT company_name FROM system_info WHERE id = 1") or {}
         name = si.get("company_name") or "Shahajahan Enterprise"
         self.banner.setText(
-            "<div style='color:white'><span style='font-size:26pt;font-family:Georgia'>"
+            "<div style='color:white'><span style='font-size:20pt;font-family:Georgia'>"
             f"{name}</span><br>"
             "<i style='font-size:11pt;color:#ffe97a'>Inventory Management Software (IMS)</i></div>")
 
