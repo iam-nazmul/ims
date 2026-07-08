@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import os
 from datetime import date
 
 from .qt import *
 from .db import db, money
+
+MEDIA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "media")
+MAGNIFIER_ICON = os.path.join(MEDIA_DIR, "icons", "magnifier_icon.png")
 
 DIALOG_QSS = """
 QDialog { background-color: #b8cce4; }
@@ -286,7 +290,9 @@ class LookupField(QWidget):
         self.code = QLineEdit()
         self.code.setReadOnly(True)
         self.code.setMaximumWidth(90)
-        btn = QPushButton("\U0001F50D")
+        btn = QPushButton()
+        btn.setIcon(QIcon(MAGNIFIER_ICON))
+        btn.setIconSize(QSize(16, 16))
         btn.setMaximumWidth(32)
         btn.clicked.connect(self.open_picker)
         self.name = QLineEdit()
