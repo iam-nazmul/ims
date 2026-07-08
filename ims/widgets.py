@@ -281,9 +281,11 @@ class LookupField(QWidget):
     """code box + magnifier button + name box (read-only), as in the video forms."""
     selected = Signal(dict)
 
-    def __init__(self, title: str, headers: list[str], sql: str, parent=None):
+    def __init__(self, title: str, headers: list[str], sql: str, parent=None,
+                 new_form_factory=None):
         super().__init__(parent)
         self.title, self.headers, self.sql = title, headers, sql
+        self.new_form_factory = new_form_factory
         self.record: dict | None = None
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -299,12 +301,28 @@ class LookupField(QWidget):
         self.name.setReadOnly(True)
         lay.addWidget(self.code)
         lay.addWidget(btn)
+        if new_form_factory is not None:
+            add_btn = QPushButton("Add New")
+            add_btn.clicked.connect(self.open_new)
+            lay.addWidget(add_btn)
         lay.addWidget(self.name, 1)
 
     def open_picker(self):
         rec = PickerDialog.pick(self.title, self.headers, self.sql, self)
         if rec:
             self.set_record(rec)
+
+    def open_new(self):
+        dlg = self.new_form_factory(self)
+        if dlg.exec():
+            rec = self._latest_record()
+            if rec:
+                self.set_record(rec)
+
+    def _latest_record(self) -> dict | None:
+        """Most recently inserted row visible through this field's own SQL."""
+        blanks = ("%",) * self.sql.count("%s")
+        return db().fetch_one(f"SELECT * FROM ({self.sql}) t ORDER BY t.id DESC LIMIT 1", blanks)
 
     def set_record(self, rec: dict | None):
         self.record = rec
