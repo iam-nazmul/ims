@@ -3,7 +3,8 @@
 try:
     from PySide6.QtCore import (Qt, QDate, QRegularExpression, QSortFilterProxyModel, Signal)
     from PySide6.QtGui import (QAction, QFont, QColor, QIcon, QStandardItem,
-                               QStandardItemModel, QTextDocument, QPixmap)
+                               QStandardItemModel, QTextDocument, QPixmap,
+                               QPainter, QPen)
     from PySide6.QtWidgets import (
         QApplication, QCheckBox, QComboBox, QDateEdit, QDialog, QDoubleSpinBox,
         QFileDialog, QFormLayout, QFrame, QGridLayout, QGroupBox, QHBoxLayout,
@@ -16,7 +17,8 @@ except ImportError:                                       # pragma: no cover
     from PyQt6.QtCore import (Qt, QDate, QRegularExpression, QSortFilterProxyModel)
     from PyQt6.QtCore import pyqtSignal as Signal
     from PyQt6.QtGui import (QAction, QFont, QColor, QIcon, QStandardItem,
-                             QStandardItemModel, QTextDocument, QPixmap)
+                             QStandardItemModel, QTextDocument, QPixmap,
+                             QPainter, QPen)
     from PyQt6.QtWidgets import (
         QApplication, QCheckBox, QComboBox, QDateEdit, QDialog, QDoubleSpinBox,
         QFileDialog, QFormLayout, QFrame, QGridLayout, QGroupBox, QHBoxLayout,

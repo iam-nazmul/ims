@@ -35,6 +35,24 @@ QTabBar::tab:selected { background: #b8cce4; font-weight: bold; }
 """
 
 
+def magnifier_icon(size: int = 16, color: str = "#10243c") -> QIcon:
+    """Magnifying-glass icon: theme icon if available, else drawn by hand."""
+    icon = QIcon.fromTheme("edit-find")
+    if not icon.isNull():
+        return icon
+    pm = QPixmap(size, size)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(QPen(QColor(color), max(2.0, size / 8)))
+    d = round(size * 0.55)
+    p.drawEllipse(2, 2, d, d)
+    off = 2 + round(d * 0.85)
+    p.drawLine(off, off, size - 2, size - 2)
+    p.end()
+    return QIcon(pm)
+
+
 def dedit(d: date | None = None) -> QDateEdit:
     w = QDateEdit()
     w.setCalendarPopup(True)
@@ -286,7 +304,9 @@ class LookupField(QWidget):
         self.code = QLineEdit()
         self.code.setReadOnly(True)
         self.code.setMaximumWidth(90)
-        btn = QPushButton("\U0001F50D")
+        btn = QPushButton()
+        btn.setIcon(magnifier_icon())
+        btn.setToolTip("Search…")
         btn.setMaximumWidth(32)
         btn.clicked.connect(self.open_picker)
         self.name = QLineEdit()
