@@ -4,6 +4,7 @@
 DROP VIEW IF EXISTS customer_dues, supplier_dues, product_stock CASCADE;
 DROP TABLE IF EXISTS
     installment_payments, installments, sale_return_items, sales_returns,
+    purchase_return_items, purchase_returns, damaged_products,
     sale_items, sales, purchase_items, purchases,
     cash_collections, cash_deliveries, bank_transactions,
     investments, investment_heads, incomes, expenses,
@@ -189,6 +190,35 @@ CREATE TABLE sale_return_items (
     total NUMERIC(14,2) DEFAULT 0
 );
 
+CREATE TABLE purchase_returns (
+    id SERIAL PRIMARY KEY,
+    return_no VARCHAR(30) NOT NULL,
+    return_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    purchase_id INTEGER NOT NULL REFERENCES purchases(id),
+    net_total NUMERIC(14,2) DEFAULT 0,
+    back_amount NUMERIC(14,2) DEFAULT 0
+);
+
+CREATE TABLE purchase_return_items (
+    id SERIAL PRIMARY KEY,
+    return_id INTEGER NOT NULL REFERENCES purchase_returns(id) ON DELETE CASCADE,
+    product_id INTEGER NOT NULL REFERENCES products(id),
+    qty NUMERIC(12,2) NOT NULL,
+    unit_price NUMERIC(14,2) DEFAULT 0,
+    total NUMERIC(14,2) DEFAULT 0
+);
+
+CREATE TABLE damaged_products (
+    id SERIAL PRIMARY KEY,
+    damage_no VARCHAR(30) NOT NULL,
+    damage_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    product_id INTEGER NOT NULL REFERENCES products(id),
+    qty NUMERIC(12,2) NOT NULL,
+    rate NUMERIC(14,2) DEFAULT 0,
+    total NUMERIC(14,2) DEFAULT 0,
+    remarks TEXT DEFAULT ''
+);
+
 CREATE TABLE cash_collections (
     id SERIAL PRIMARY KEY,
     entry_date DATE NOT NULL DEFAULT CURRENT_DATE,
@@ -279,7 +309,10 @@ SELECT sp.id,
        + COALESCE((SELECT SUM(p.net_total - p.paid_amount) FROM purchases p
                    WHERE p.supplier_id = sp.id), 0)
        - COALESCE((SELECT SUM(cd.amount) FROM cash_deliveries cd
-                   WHERE cd.supplier_id = sp.id), 0) AS total_due
+                   WHERE cd.supplier_id = sp.id), 0)
+       - COALESCE((SELECT SUM(pr.back_amount) FROM purchase_returns pr
+                   JOIN purchases p2 ON p2.id = pr.purchase_id
+                   WHERE p2.supplier_id = sp.id), 0) AS total_due
 FROM suppliers sp;
 
 -- Seed data ---------------------------------------------------------------

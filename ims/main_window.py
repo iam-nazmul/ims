@@ -10,7 +10,7 @@ from .widgets import SearchBar, DataTable, html_table, preview_html, info
 from .basic import SystemInfoDialog, SimpleNameDialog, ProductsDialog
 from .people import EmployeesDialog, CustomersDialog, SuppliersDialog
 from .inventory import (PurchaseOrdersDialog, SalesOrdersDialog, CreditSalesDialog,
-                        ReturnsDialog)
+                        ReturnsDialog, PurchaseReturnsDialog, DamageProductsDialog)
 from .accounts import (CashCollectionsDialog, CashDeliveriesDialog, BankTransactionsDialog,
                        MoneyListDialog, InvestmentHeadsDialog, InvestmentsDialog)
 from .reports import AllReportDialog, Reports
@@ -86,7 +86,9 @@ class MainWindow(QMainWindow):
                 ("Purchase Order", self.open_purchases),
                 ("Sales Order", self.open_sales),
                 ("Credit Sales", self.open_credit_sales),
-                ("Return Product", self.open_returns),
+                ("Sales Return", self.open_returns),
+                ("Purchase Return", self.open_purchase_returns),
+                ("Damage Product", self.open_damage_products),
             ],
             "Account Management": [
                 ("Cash Collection", self.open_collections),
@@ -269,6 +271,12 @@ class MainWindow(QMainWindow):
 
     def open_returns(self):
         ReturnsDialog(self).exec()
+
+    def open_purchase_returns(self):
+        PurchaseReturnsDialog(self).exec()
+
+    def open_damage_products(self):
+        DamageProductsDialog(self).exec()
 
     def open_collections(self):
         CashCollectionsDialog(self).exec()

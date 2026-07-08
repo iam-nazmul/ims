@@ -303,7 +303,8 @@ class PurchaseOrdersDialog(QDialog):
 
         side = QVBoxLayout()
         for name, fn in [("New", self.on_new), ("Edit", self.on_edit),
-                         ("Invoice", self.on_invoice), ("Close", self.accept)]:
+                         ("Invoice", self.on_invoice), ("Return", self.on_return),
+                         ("Close", self.accept)]:
             b = QPushButton(name); b.setMinimumWidth(90); b.clicked.connect(fn)
             side.addWidget(b)
         side.addStretch(1)
@@ -339,6 +340,14 @@ class PurchaseOrdersDialog(QDialog):
         if PurchaseOrderForm(rec_id, self).exec():
             self.reload()
 
+    def on_return(self):
+        rec_id = self.table.current_id()
+        if rec_id is None:
+            info(self, "Select a purchase order first.")
+            return
+        if PurchaseReturnForm(rec_id, self).exec():
+            self.reload()
+
     def on_invoice(self):
         rec_id = self.table.current_id()
         if rec_id is None:
@@ -365,6 +374,162 @@ class PurchaseOrdersDialog(QDialog):
                 + f"<p align='right'><b>Paid:</b> {money(p['paid_amount'])} &nbsp; "
                   f"<b>Due:</b> {money(p['net_total'] - p['paid_amount'])}</p>")
         preview_html(self, "Purchase Invoice", body)
+
+
+# ---------------------------------------------------------------------------
+# Purchase Return
+
+class PurchaseReturnForm(QDialog):
+    """Return Product: give back purchased items to the supplier and destock."""
+
+    def __init__(self, purchase_id: int, parent=None):
+        super().__init__(parent)
+        self.purchase_id = purchase_id
+        self.setWindowTitle("Purchase Return")
+        self.setMinimumSize(700, 520)
+        self.setStyleSheet(DIALOG_QSS)
+        purchase = db().fetch_one(
+            """SELECT p.*, s.name AS supplier, d.total_due
+               FROM purchases p JOIN suppliers s ON s.id = p.supplier_id
+               JOIN supplier_dues d ON d.id = s.id WHERE p.id = %s""", (purchase_id,))
+
+        lay = QVBoxLayout(self)
+        head = QGroupBox("Supplier")
+        form = QGridLayout(head)
+        self.return_no = QLineEdit(f"PRTN-{db().next_serial('purchase_returns'):04d}")
+        self.return_no.setReadOnly(True)
+        self.return_date = dedit()
+        form.addWidget(QLabel("Return No"), 0, 0); form.addWidget(self.return_no, 0, 1)
+        form.addWidget(QLabel("Return Date"), 0, 2); form.addWidget(self.return_date, 0, 3)
+        form.addWidget(QLabel("Challan"), 1, 0)
+        form.addWidget(QLabel(f"<b>{purchase['challan_no']}</b>"), 1, 1)
+        form.addWidget(QLabel("Supplier"), 1, 2)
+        form.addWidget(QLabel(f"<b>{purchase['supplier']}</b>"), 1, 3)
+        form.addWidget(QLabel("Prev. Due"), 2, 0)
+        form.addWidget(QLabel(f"<b>{money(purchase['total_due'])}</b>"), 2, 1)
+        lay.addWidget(head)
+
+        lay.addWidget(QLabel("Set the quantity to return for each product:"))
+        items = db().fetch_all(
+            """SELECT pi.product_id, pr.model_name, pi.qty, pi.purchase_rate
+               FROM purchase_items pi JOIN products pr ON pr.id = pi.product_id
+               WHERE pi.purchase_id = %s ORDER BY pi.id""", (purchase_id,))
+        self.grid = QTableWidget(len(items), 4)
+        self.grid.setHorizontalHeaderLabels(["Product", "Pur. Qty", "P.Rate", "Return Qty"])
+        self.grid.verticalHeader().setVisible(False)
+        self.grid.horizontalHeader().setStretchLastSection(True)
+        self._items = items
+        self._spins = []
+        for r, it in enumerate(items):
+            for c, val in enumerate([it["model_name"], money(it["qty"]), money(it["purchase_rate"])]):
+                cell = QTableWidgetItem(str(val))
+                cell.setFlags(cell.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                self.grid.setItem(r, c, cell)
+            spin = dspin(float(it["qty"]), 2)
+            spin.setRange(0, float(it["qty"]))
+            spin.valueChanged.connect(self._recalc)
+            self.grid.setCellWidget(r, 3, spin)
+            self._spins.append(spin)
+        lay.addWidget(self.grid, 1)
+
+        foot = QFormLayout()
+        self.net_total = dspin(read_only=True)
+        self.back_amount = dspin()
+        foot.addRow("Net Total", self.net_total)
+        foot.addRow("Back Amount", self.back_amount)
+        lay.addLayout(foot)
+
+        row = QHBoxLayout()
+        ret = QPushButton("Return"); ret.clicked.connect(self.save)
+        close = QPushButton("Close"); close.clicked.connect(self.reject)
+        row.addStretch(1); row.addWidget(ret); row.addWidget(close)
+        lay.addLayout(row)
+
+    def _recalc(self):
+        total = sum(s.value() * float(it["purchase_rate"])
+                    for s, it in zip(self._spins, self._items))
+        self.net_total.setValue(total)
+        self.back_amount.setValue(total)
+
+    def save(self):
+        returns = [(it, s.value()) for it, s in zip(self._items, self._spins) if s.value() > 0]
+        if not returns:
+            info(self, "Set a return quantity first.")
+            return
+        with db().transaction() as cur:
+            cur.execute(
+                """INSERT INTO purchase_returns (return_no, return_date, purchase_id, net_total,
+                       back_amount) VALUES (%s,%s,%s,%s,%s) RETURNING id""",
+                (self.return_no.text(), pydate(self.return_date), self.purchase_id,
+                 self.net_total.value(), self.back_amount.value()))
+            rid = cur.fetchone()["id"]
+            for it, qty in returns:
+                cur.execute(
+                    """INSERT INTO purchase_return_items (return_id, product_id, qty, unit_price,
+                           total) VALUES (%s,%s,%s,%s,%s)""",
+                    (rid, it["product_id"], qty, it["purchase_rate"],
+                     qty * float(it["purchase_rate"])))
+                cur.execute("UPDATE products SET stock_qty = stock_qty - %s WHERE id = %s",
+                            (qty, it["product_id"]))
+        info(self, "Purchase return saved.")
+        self.accept()
+
+
+def purchase_return_invoice_html(return_id: int) -> str:
+    r = db().fetch_one(
+        """SELECT r.*, p.challan_no, s.name AS supplier, s.contact_no, s.address
+           FROM purchase_returns r JOIN purchases p ON p.id = r.purchase_id
+           JOIN suppliers s ON s.id = p.supplier_id WHERE r.id = %s""", (return_id,))
+    items = db().fetch_all(
+        """SELECT pr.model_name, ri.qty, ri.unit_price, ri.total
+           FROM purchase_return_items ri JOIN products pr ON pr.id = ri.product_id
+           WHERE ri.return_id = %s""", (return_id,))
+    rows = [[i + 1, it["model_name"], float(it["qty"]), float(it["unit_price"]), float(it["total"])]
+            for i, it in enumerate(items)]
+    return (
+        f"<p><b>Return No:</b> {r['return_no']} &nbsp; <b>Return Date:</b> {r['return_date']:%d/%m/%Y}<br>"
+        f"<b>Challan No:</b> {r['challan_no']}<br>"
+        f"<b>Supplier:</b> {r['supplier']} &nbsp; <b>Contact No:</b> {r['contact_no']}<br>"
+        f"<b>Address:</b> {r['address']}</p>"
+        + html_table(["SI", "Product Name", "Qty.", "Unit Price", "Total"], rows,
+                     ["Total", "", float(sum(it["qty"] for it in items)), None, float(r["net_total"])])
+        + f"<p align='right'><b>Back Amount:</b> {money(r['back_amount'])}</p>"
+        + "<br><br><table width='100%'><tr>"
+          "<td>Receiver's Signature</td>"
+          "<td align='right'>Authorized Signature</td></tr></table>")
+
+
+class PurchaseReturnsDialog(ListDialog):
+    title = "Purchase Return"
+    headers = ["Return Date", "Return No", "Challan No", "Supplier", "Contact No",
+               "Net Total", "Back Amount"]
+    buttons = ("Invoice", "Delete", "Close")
+
+    def load_rows(self, search):
+        rows = db().fetch_all(
+            """SELECT r.id, r.return_date, r.return_no, p.challan_no, s.name, s.contact_no,
+                      r.net_total, r.back_amount
+               FROM purchase_returns r JOIN purchases p ON p.id = r.purchase_id
+               JOIN suppliers s ON s.id = p.supplier_id
+               WHERE s.name ILIKE %s OR r.return_no ILIKE %s OR p.challan_no ILIKE %s
+               ORDER BY r.return_date DESC""", (f"%{search}%",) * 3)
+        return [(r["id"], r["return_date"].strftime("%d %b %Y"), r["return_no"],
+                 r["challan_no"], r["name"], r["contact_no"], money(r["net_total"]),
+                 money(r["back_amount"])) for r in rows]
+
+    def delete_sql(self):
+        return "DELETE FROM purchase_returns WHERE id = %s"
+
+    def open_form(self, rec_id=None):
+        info(self, "Open a purchase order and press Return to create a purchase return.")
+        return False
+
+    def on_invoice(self):
+        rec_id = self.table.current_id()
+        if rec_id is None:
+            info(self, "Select a purchase return first.")
+            return
+        preview_html(self, "Purchase Return Invoice", purchase_return_invoice_html(rec_id))
 
 
 # ---------------------------------------------------------------------------
@@ -806,11 +971,35 @@ class SalesReturnForm(QDialog):
         self.accept()
 
 
+def sales_return_invoice_html(return_id: int) -> str:
+    r = db().fetch_one(
+        """SELECT r.*, s.invoice_no, c.name AS customer, c.contact_no, c.address
+           FROM sales_returns r JOIN sales s ON s.id = r.sale_id
+           JOIN customers c ON c.id = s.customer_id WHERE r.id = %s""", (return_id,))
+    items = db().fetch_all(
+        """SELECT pr.model_name, ri.qty, ri.unit_price, ri.total
+           FROM sale_return_items ri JOIN products pr ON pr.id = ri.product_id
+           WHERE ri.return_id = %s""", (return_id,))
+    rows = [[i + 1, it["model_name"], float(it["qty"]), float(it["unit_price"]), float(it["total"])]
+            for i, it in enumerate(items)]
+    return (
+        f"<p><b>Return No:</b> {r['return_no']} &nbsp; <b>Return Date:</b> {r['return_date']:%d/%m/%Y}<br>"
+        f"<b>Invoice No:</b> {r['invoice_no']}<br>"
+        f"<b>Customer:</b> {r['customer']} &nbsp; <b>Contact No:</b> {r['contact_no']}<br>"
+        f"<b>Address:</b> {r['address']}</p>"
+        + html_table(["SI", "Product Name", "Qty.", "Unit Price", "Total"], rows,
+                     ["Total", "", float(sum(it["qty"] for it in items)), None, float(r["net_total"])])
+        + f"<p align='right'><b>Back Amount:</b> {money(r['back_amount'])}</p>"
+        + "<br><br><table width='100%'><tr>"
+          "<td>Receiver's Signature</td>"
+          "<td align='right'>Authorized Signature</td></tr></table>")
+
+
 class ReturnsDialog(ListDialog):
-    title = "Return Products"
+    title = "Sales Return"
     headers = ["ReturnDate", "Return No", "Invoice No", "Customer", "Contact No",
                "Net Total", "Back Amount"]
-    buttons = ("Delete", "Close")
+    buttons = ("Invoice", "Delete", "Close")
 
     def load_rows(self, search):
         rows = db().fetch_all(
@@ -830,6 +1019,110 @@ class ReturnsDialog(ListDialog):
     def open_form(self, rec_id=None):
         info(self, "Open a sales order and press Return to create a product return.")
         return False
+
+    def on_invoice(self):
+        rec_id = self.table.current_id()
+        if rec_id is None:
+            info(self, "Select a sales return first.")
+            return
+        preview_html(self, "Sales Return Invoice", sales_return_invoice_html(rec_id))
+
+
+# ---------------------------------------------------------------------------
+# Damage Product
+
+class DamageProductForm(QDialog):
+    """Write off damaged/broken stock: pick a product, quantity and reason."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Damage Product")
+        self.setMinimumSize(560, 380)
+        self.setStyleSheet(DIALOG_QSS)
+        lay = QVBoxLayout(self)
+
+        form = QFormLayout()
+        self.damage_no = QLineEdit(f"DMG-{db().next_serial('damaged_products'):04d}")
+        self.damage_no.setReadOnly(True)
+        self.damage_date = dedit()
+        self.product = product_lookup(self)
+        self.product.selected.connect(self._product_picked)
+        self.stock = dspin(read_only=True)
+        self.qty = dspin(999999, 2); self.qty.setValue(1)
+        self.rate = dspin()
+        self.total = dspin(read_only=True)
+        self.remarks = QLineEdit()
+        for w in (self.qty, self.rate):
+            w.valueChanged.connect(self._recalc)
+        form.addRow("Damage No", self.damage_no)
+        form.addRow("Damage Date", self.damage_date)
+        form.addRow("Product", self.product)
+        form.addRow("Stock", self.stock)
+        form.addRow("Quantity", self.qty)
+        form.addRow("Rate", self.rate)
+        form.addRow("Total", self.total)
+        form.addRow("Remarks", self.remarks)
+        lay.addLayout(form)
+
+        row = QHBoxLayout()
+        save = QPushButton("Save"); save.clicked.connect(self.save)
+        close = QPushButton("Close"); close.clicked.connect(self.reject)
+        row.addStretch(1); row.addWidget(save); row.addWidget(close)
+        lay.addLayout(row)
+
+    def _product_picked(self, rec):
+        self.stock.setValue(float(rec["stock_qty"]))
+        self.rate.setValue(float(rec["purchase_rate"]))
+        self.qty.setValue(1)
+        self._recalc()
+
+    def _recalc(self):
+        self.total.setValue(self.qty.value() * self.rate.value())
+
+    def save(self):
+        if not self.product.record:
+            error(self, "Select a product.")
+            return
+        if self.qty.value() <= 0:
+            error(self, "Quantity must be positive.")
+            return
+        if self.qty.value() > self.stock.value():
+            if not confirm(self, "Quantity exceeds available stock. Continue?"):
+                return
+        with db().transaction() as cur:
+            cur.execute(
+                """INSERT INTO damaged_products (damage_no, damage_date, product_id, qty,
+                       rate, total, remarks) VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                (self.damage_no.text(), pydate(self.damage_date), self.product.value(),
+                 self.qty.value(), self.rate.value(), self.total.value(),
+                 self.remarks.text()))
+            cur.execute("UPDATE products SET stock_qty = stock_qty - %s WHERE id = %s",
+                        (self.qty.value(), self.product.value()))
+        info(self, "Damage entry saved.")
+        self.accept()
+
+
+class DamageProductsDialog(ListDialog):
+    title = "Damage Product"
+    headers = ["Damage Date", "Damage No", "Product", "Qty", "Rate", "Total", "Remarks"]
+    buttons = ("New", "Delete", "Close")
+
+    def load_rows(self, search):
+        rows = db().fetch_all(
+            """SELECT d.id, d.damage_date, d.damage_no, p.model_name, d.qty, d.rate,
+                      d.total, d.remarks
+               FROM damaged_products d JOIN products p ON p.id = d.product_id
+               WHERE p.model_name ILIKE %s OR d.damage_no ILIKE %s
+               ORDER BY d.damage_date DESC""", (f"%{search}%",) * 2)
+        return [(r["id"], r["damage_date"].strftime("%d %b %Y"), r["damage_no"],
+                 r["model_name"], money(r["qty"]), money(r["rate"]), money(r["total"]),
+                 r["remarks"]) for r in rows]
+
+    def open_form(self, rec_id=None):
+        return bool(DamageProductForm(self).exec())
+
+    def delete_sql(self):
+        return "DELETE FROM damaged_products WHERE id = %s"
 
 
 # ---------------------------------------------------------------------------
