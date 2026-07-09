@@ -5,9 +5,9 @@ from __future__ import annotations
 from datetime import date
 
 from .qt import *
-from .db import db, money
+from .db import db, money, current_company
 from .widgets import SearchBar, DataTable, html_table, preview_html, info, error
-from .basic import SystemInfoDialog, SimpleNameDialog, ProductsDialog
+from .basic import SystemInfoDialog, CompaniesDialog, SimpleNameDialog, ProductsDialog
 from .people import EmployeesDialog, CustomersDialog, SuppliersDialog
 from .users import UsersDialog, ChangePasswordDialog, RolesDialog, MENU_KEYS, get_role_permissions
 from .settings import BackupDatabaseDialog, RestoreDatabaseDialog
@@ -60,8 +60,6 @@ class MainWindow(QMainWindow):
         """)
         self._build_menus()
         self._build_body()
-        self.statusBar().showMessage(
-            f"Logged in As : {user['username']}    |    {date.today():%d %b %Y}")
         self.refresh()
 
     # -- UI -------------------------------------------------------------------
@@ -73,7 +71,8 @@ class MainWindow(QMainWindow):
 
         basic_config = [
             ("System Information", lambda: SystemInfoDialog(self).exec()),
-            ("Companies", lambda: SimpleNameDialog("companies", "Companies", self).exec()),
+            ("Companies", lambda: CompaniesDialog(self).exec()),
+            ("Brands", lambda: SimpleNameDialog("brands", "Brand", self).exec()),
             ("Category", lambda: SimpleNameDialog("categories", "Category", self).exec()),
             ("Product", self.open_products),
             ("Bank", lambda: SimpleNameDialog("banks", "Bank", self).exec()),
@@ -207,7 +206,7 @@ class MainWindow(QMainWindow):
         self.prod_search = SearchBar()
         self.prod_search.searched.connect(lambda *_: self.refresh())
         right.addWidget(self.prod_search)
-        self.prod_table = DataTable(["Product Name", "Company Name", "Short", "Stock"])
+        self.prod_table = DataTable(["Product Name", "Brand Name", "Short", "Stock"])
         right.addWidget(self.prod_table, 1)
         prod_print = QPushButton("Print")
         prod_print.setObjectName("find")
@@ -224,12 +223,16 @@ class MainWindow(QMainWindow):
 
     # -- dashboard data ---------------------------------------------------------
     def _update_banner(self):
-        si = db().fetch_one("SELECT company_name FROM system_info WHERE id = 1") or {}
-        name = si.get("company_name") or "Shahajahan Enterprise"
+        company = current_company() or {}
+        name = company.get("name") or "IMS"
         self.banner.setText(
             "<div style='color:white'><span style='font-size:20pt;font-family:Georgia'>"
             f"{name}</span><br>"
             "<i style='font-size:11pt;color:#ffe97a'>Inventory Management Software (IMS)</i></div>")
+        self.setWindowTitle(f"IMS — {name}")
+        self.statusBar().showMessage(
+            f"Logged in As : {self.user['username']}    |    Company : {name}"
+            f"    |    {date.today():%d %b %Y}")
 
     def refresh(self):
         self._update_banner()
@@ -238,7 +241,8 @@ class MainWindow(QMainWindow):
             """SELECT c.id, c.code, c.name, c.contact_no, c.address, d.total_due,
                       c.customer_type
                FROM customers c JOIN customer_dues d ON d.id = c.id
-               WHERE c.name ILIKE %s OR c.code ILIKE %s OR c.contact_no ILIKE %s
+               WHERE c.company_id = app_company_id()
+                     AND (c.name ILIKE %s OR c.code ILIKE %s OR c.contact_no ILIKE %s)
                ORDER BY c.name""", (s, s, s))
         self.cust_table.set_rows(
             [(r["id"], r["code"], r["name"], r["contact_no"], r["address"],
@@ -246,19 +250,21 @@ class MainWindow(QMainWindow):
 
         s = f"%{self.prod_search.edit.text().strip()}%"
         rows = db().fetch_all(
-            """SELECT p.id, p.model_name, com.name AS company,
+            """SELECT p.id, p.model_name, b.name AS brand,
                       GREATEST(p.warning_qty - p.stock_qty, 0) AS short, p.stock_qty
-               FROM products p LEFT JOIN companies com ON com.id = p.company_id
-               WHERE p.model_name ILIKE %s OR com.name ILIKE %s
-               ORDER BY com.name, p.model_name""", (s, s))
+               FROM products p LEFT JOIN brands b ON b.id = p.brand_id
+               WHERE p.company_id = app_company_id()
+                     AND (p.model_name ILIKE %s OR b.name ILIKE %s)
+               ORDER BY b.name, p.model_name""", (s, s))
         self.prod_table.set_rows(
-            [(r["id"], r["model_name"], r["company"], money(r["short"]),
+            [(r["id"], r["model_name"], r["brand"], money(r["short"]),
               money(r["stock_qty"])) for r in rows])
 
     def print_customers(self):
         rows = db().fetch_all(
             """SELECT c.code, c.name, c.contact_no, c.address, d.total_due
-               FROM customers c JOIN customer_dues d ON d.id = c.id ORDER BY c.name""")
+               FROM customers c JOIN customer_dues d ON d.id = c.id
+               WHERE c.company_id = app_company_id() ORDER BY c.name""")
         preview_html(self, "Customer List", html_table(
             ["Code", "Customer Name", "Contact No", "Address", "Amount"],
             [[r["code"], r["name"], r["contact_no"], r["address"], float(r["total_due"])]
@@ -266,13 +272,14 @@ class MainWindow(QMainWindow):
 
     def print_products(self):
         rows = db().fetch_all(
-            """SELECT p.model_name, com.name AS company,
+            """SELECT p.model_name, b.name AS brand,
                       GREATEST(p.warning_qty - p.stock_qty, 0) AS short, p.stock_qty
-               FROM products p LEFT JOIN companies com ON com.id = p.company_id
-               ORDER BY com.name, p.model_name""")
+               FROM products p LEFT JOIN brands b ON b.id = p.brand_id
+               WHERE p.company_id = app_company_id()
+               ORDER BY b.name, p.model_name""")
         preview_html(self, "Product Stock List", html_table(
-            ["Product Name", "Company Name", "Short", "Stock"],
-            [[r["model_name"], r["company"], float(r["short"]), float(r["stock_qty"])]
+            ["Product Name", "Brand Name", "Short", "Stock"],
+            [[r["model_name"], r["brand"], float(r["short"]), float(r["stock_qty"])]
              for r in rows]))
 
     # -- window openers ---------------------------------------------------------

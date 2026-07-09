@@ -16,17 +16,21 @@ PRODUCT_PICK_SQL = """
     SELECT p.id, p.code, p.model_name AS name, c.name AS category, p.stock_qty,
            p.purchase_rate, p.sales_rate, p.mrp_rate
     FROM products p LEFT JOIN categories c ON c.id = p.category_id
-    WHERE p.code ILIKE %s OR p.model_name ILIKE %s ORDER BY p.code"""
+    WHERE p.company_id = app_company_id()
+          AND (p.code ILIKE %s OR p.model_name ILIKE %s) ORDER BY p.code"""
 
 SUPPLIER_PICK_SQL = """
     SELECT s.id, s.code, s.name, s.contact_no, d.total_due
     FROM suppliers s JOIN supplier_dues d ON d.id = s.id
-    WHERE s.code ILIKE %s OR s.name ILIKE %s ORDER BY s.name"""
+    WHERE s.company_id = app_company_id()
+          AND (s.code ILIKE %s OR s.name ILIKE %s) ORDER BY s.name"""
 
 CUSTOMER_PICK_SQL = """
     SELECT c.id, c.code, c.name, c.contact_no, c.address, d.total_due
     FROM customers c JOIN customer_dues d ON d.id = c.id
-    WHERE c.code ILIKE %s OR c.name ILIKE %s OR c.contact_no ILIKE %s ORDER BY c.name"""
+    WHERE c.company_id = app_company_id()
+          AND (c.code ILIKE %s OR c.name ILIKE %s OR c.contact_no ILIKE %s)
+    ORDER BY c.name"""
 
 
 def product_lookup(parent) -> LookupField:
@@ -41,7 +45,7 @@ def stock_tab() -> QWidget:
     lay = QVBoxLayout(w)
     bar = SearchBar()
     lay.addWidget(bar)
-    table = DataTable(["Stock Code", "Product Name", "Category", "Company",
+    table = DataTable(["Stock Code", "Product Name", "Category", "Brand",
                        "Qty", "Pur.Rate", "MRP", "Total Price"])
     lay.addWidget(table, 1)
     total_lbl = QLabel("Total : 0")
@@ -50,16 +54,17 @@ def stock_tab() -> QWidget:
 
     def load(search=""):
         rows = db().fetch_all(
-            """SELECT p.id, p.code, p.model_name, cat.name AS category, com.name AS company,
+            """SELECT p.id, p.code, p.model_name, cat.name AS category, b.name AS brand,
                       p.stock_qty, p.purchase_rate, p.mrp_rate,
                       p.stock_qty * p.purchase_rate AS total_price
                FROM products p
                LEFT JOIN categories cat ON cat.id = p.category_id
-               LEFT JOIN companies com ON com.id = p.company_id
-               WHERE p.code ILIKE %s OR p.model_name ILIKE %s OR cat.name ILIKE %s
-                     OR com.name ILIKE %s
+               LEFT JOIN brands b ON b.id = p.brand_id
+               WHERE p.company_id = app_company_id()
+                     AND (p.code ILIKE %s OR p.model_name ILIKE %s OR cat.name ILIKE %s
+                          OR b.name ILIKE %s)
                ORDER BY p.code""", (f"%{search}%",) * 4)
-        table.set_rows([(r["id"], r["code"], r["model_name"], r["category"], r["company"],
+        table.set_rows([(r["id"], r["code"], r["model_name"], r["category"], r["brand"],
                          money(r["stock_qty"]), money(r["purchase_rate"]),
                          money(r["mrp_rate"]), money(r["total_price"])) for r in rows])
         total_lbl.setText(f"Total : {len(rows)}")
@@ -323,7 +328,8 @@ class PurchaseOrdersDialog(QDialog):
                       s.address, s.contact_no, p.net_total, p.paid_amount,
                       p.net_total - p.paid_amount AS due
                FROM purchases p JOIN suppliers s ON s.id = p.supplier_id
-               WHERE s.name ILIKE %s OR p.challan_no ILIKE %s
+               WHERE p.company_id = app_company_id()
+                     AND (s.name ILIKE %s OR p.challan_no ILIKE %s)
                ORDER BY p.purchase_date DESC, p.id DESC""", (f"%{search}%",) * 2)
         self.table.set_rows([(r["id"], r["purchase_date"].strftime("%d %b %Y"), r["challan_no"],
                               r["name"], r["contact_person"], r["address"], r["contact_no"],
@@ -515,14 +521,15 @@ class PurchaseReturnsDialog(ListDialog):
                       r.net_total, r.back_amount
                FROM purchase_returns r JOIN purchases p ON p.id = r.purchase_id
                JOIN suppliers s ON s.id = p.supplier_id
-               WHERE s.name ILIKE %s OR r.return_no ILIKE %s OR p.challan_no ILIKE %s
+               WHERE r.company_id = app_company_id()
+                     AND (s.name ILIKE %s OR r.return_no ILIKE %s OR p.challan_no ILIKE %s)
                ORDER BY r.return_date DESC""", (f"%{search}%",) * 3)
         return [(r["id"], r["return_date"].strftime("%d %b %Y"), r["return_no"],
                  r["challan_no"], r["name"], r["contact_no"], money(r["net_total"]),
                  money(r["back_amount"])) for r in rows]
 
     def delete_sql(self):
-        return "DELETE FROM purchase_returns WHERE id = %s"
+        return "DELETE FROM purchase_returns WHERE id = %s AND company_id = app_company_id()"
 
     def open_form(self, rec_id=None):
         info(self, "Open a purchase order and press Return to create a purchase return.")
@@ -629,7 +636,8 @@ class SalesOrderForm(QDialog):
         cform = QFormLayout(card)
         self.bank = QComboBox()
         self.bank.addItem("--Select Bank--", None)
-        for b in db().fetch_all("SELECT id, name FROM banks ORDER BY name"):
+        for b in db().fetch_all(
+                "SELECT id, name FROM banks WHERE company_id = app_company_id() ORDER BY name"):
             self.bank.addItem(b["name"], b["id"])
         self.card_amount = dspin()
         self.card_amount.valueChanged.connect(self._recalc_totals)
@@ -838,7 +846,8 @@ class SalesOrdersDialog(QDialog):
             """SELECT s.id, s.sales_date, s.invoice_no, c.name, c.address, c.contact_no,
                       s.net_total, s.paid_amount, s.net_total - s.paid_amount AS due
                FROM sales s JOIN customers c ON c.id = s.customer_id
-               WHERE s.sale_kind = 'CASH' AND (c.name ILIKE %s OR s.invoice_no ILIKE %s)
+               WHERE s.company_id = app_company_id() AND s.sale_kind = 'CASH'
+                     AND (c.name ILIKE %s OR s.invoice_no ILIKE %s)
                ORDER BY s.sales_date DESC, s.id DESC""", (f"%{search}%",) * 2)
         self.table.set_rows([(r["id"], r["sales_date"].strftime("%d %b %Y"), r["invoice_no"],
                               r["name"], r["address"], r["contact_no"], money(r["net_total"]),
@@ -1012,14 +1021,15 @@ class ReturnsDialog(ListDialog):
                       r.net_total, r.back_amount
                FROM sales_returns r JOIN sales s ON s.id = r.sale_id
                JOIN customers c ON c.id = s.customer_id
-               WHERE c.name ILIKE %s OR r.return_no ILIKE %s OR s.invoice_no ILIKE %s
+               WHERE r.company_id = app_company_id()
+                     AND (c.name ILIKE %s OR r.return_no ILIKE %s OR s.invoice_no ILIKE %s)
                ORDER BY r.return_date DESC""", (f"%{search}%",) * 3)
         return [(r["id"], r["return_date"].strftime("%d %b %Y"), r["return_no"],
                  r["invoice_no"], r["name"], r["contact_no"], money(r["net_total"]),
                  money(r["back_amount"])) for r in rows]
 
     def delete_sql(self):
-        return "DELETE FROM sales_returns WHERE id = %s"
+        return "DELETE FROM sales_returns WHERE id = %s AND company_id = app_company_id()"
 
     def open_form(self, rec_id=None):
         info(self, "Open a sales order and press Return to create a product return.")
@@ -1117,7 +1127,8 @@ class DamageProductsDialog(ListDialog):
             """SELECT d.id, d.damage_date, d.damage_no, p.model_name, d.qty, d.rate,
                       d.total, d.remarks
                FROM damaged_products d JOIN products p ON p.id = d.product_id
-               WHERE p.model_name ILIKE %s OR d.damage_no ILIKE %s
+               WHERE d.company_id = app_company_id()
+                     AND (p.model_name ILIKE %s OR d.damage_no ILIKE %s)
                ORDER BY d.damage_date DESC""", (f"%{search}%",) * 2)
         return [(r["id"], r["damage_date"].strftime("%d %b %Y"), r["damage_no"],
                  r["model_name"], money(r["qty"]), money(r["rate"]), money(r["total"]),
@@ -1127,7 +1138,7 @@ class DamageProductsDialog(ListDialog):
         return bool(DamageProductForm(self).exec())
 
     def delete_sql(self):
-        return "DELETE FROM damaged_products WHERE id = %s"
+        return "DELETE FROM damaged_products WHERE id = %s AND company_id = app_company_id()"
 
 
 # ---------------------------------------------------------------------------
@@ -1364,7 +1375,8 @@ class CreditSalesDialog(ListDialog):
                         AND i.status = 'Paid') || '/' ||
                       (SELECT COUNT(*) FROM installments i WHERE i.sale_id = s.id) AS inst
                FROM sales s JOIN customers c ON c.id = s.customer_id
-               WHERE s.sale_kind = 'CREDIT' AND (c.name ILIKE %s OR s.invoice_no ILIKE %s)
+               WHERE s.company_id = app_company_id() AND s.sale_kind = 'CREDIT'
+                     AND (c.name ILIKE %s OR s.invoice_no ILIKE %s)
                ORDER BY s.sales_date DESC, s.id DESC""", (f"%{search}%",) * 2)
         return [(r["id"], r["sales_date"].strftime("%d %b %Y"), r["invoice_no"], r["name"],
                  r["contact_no"], money(r["net_total"]), money(r["paid_amount"]),

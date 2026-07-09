@@ -58,20 +58,21 @@ class Reports:
     # -- basic ---------------------------------------------------------------
     def product_information(self):
         rows = db().fetch_all(
-            """SELECT p.code, p.model_name, cat.name AS category, com.name AS company,
+            """SELECT p.code, p.model_name, cat.name AS category, b.name AS brand,
                       p.stock_qty, p.purchase_rate, p.sales_rate, p.mrp_rate
                FROM products p
                LEFT JOIN categories cat ON cat.id = p.category_id
-               LEFT JOIN companies com ON com.id = p.company_id ORDER BY p.code""")
+               LEFT JOIN brands b ON b.id = p.brand_id
+               WHERE p.company_id = app_company_id() ORDER BY p.code""")
         self.show("Product Information", html_table(
-            ["Code", "Model", "Category", "Company", "Stock", "Pur.Rate", "Sales Rate", "MRP"],
-            [[r["code"], r["model_name"], r["category"], r["company"], _f(r["stock_qty"]),
+            ["Code", "Model", "Category", "Brand", "Stock", "Pur.Rate", "Sales Rate", "MRP"],
+            [[r["code"], r["model_name"], r["category"], r["brand"], _f(r["stock_qty"]),
               _f(r["purchase_rate"]), _f(r["sales_rate"]), _f(r["mrp_rate"])] for r in rows]))
 
     def employee_information(self):
         rows = db().fetch_all(
             """SELECT code, name, contact_no, designation, joining_date, gross_salary
-               FROM employees ORDER BY code""")
+               FROM employees WHERE company_id = app_company_id() ORDER BY code""")
         self.show("Employee Information", html_table(
             ["Code", "Name", "Contact No", "Designation", "Joining Date", "Gross Salary"],
             [[r["code"], r["name"], r["contact_no"], r["designation"],
@@ -81,7 +82,7 @@ class Reports:
         rows = db().fetch_all(
             """SELECT c.customer_type, c.code, c.name, c.contact_no, c.address, d.total_due
                FROM customers c JOIN customer_dues d ON d.id = c.id
-               WHERE d.total_due <> 0 ORDER BY c.name""")
+               WHERE c.company_id = app_company_id() AND d.total_due <> 0 ORDER BY c.name""")
         self.show("Due Customer List", html_table(
             ["Cus Type", "Code", "Customer Name", "Contact No", "Address", "Total Due"],
             [[r["customer_type"], r["code"], r["name"], r["contact_no"], r["address"],
@@ -92,7 +93,7 @@ class Reports:
         rows = db().fetch_all(
             """SELECT s.code, s.name, s.contact_no, s.address, d.total_due
                FROM suppliers s JOIN supplier_dues d ON d.id = s.id
-               WHERE d.total_due <> 0 ORDER BY s.name""")
+               WHERE s.company_id = app_company_id() AND d.total_due <> 0 ORDER BY s.name""")
         self.show("Supplier Due Report", html_table(
             ["Code", "Supplier Name", "Contact No", "Address", "Total Due"],
             [[r["code"], r["name"], r["contact_no"], r["address"], _f(r["total_due"])]
@@ -101,15 +102,15 @@ class Reports:
 
     def stock_report(self):
         rows = db().fetch_all(
-            """SELECT p.code, p.model_name, cat.name AS category, com.name AS company,
+            """SELECT p.code, p.model_name, cat.name AS category, b.name AS brand,
                       p.stock_qty, p.purchase_rate, p.stock_qty * p.purchase_rate AS value
                FROM products p
                LEFT JOIN categories cat ON cat.id = p.category_id
-               LEFT JOIN companies com ON com.id = p.company_id
-               WHERE p.stock_qty <> 0 ORDER BY p.code""")
+               LEFT JOIN brands b ON b.id = p.brand_id
+               WHERE p.company_id = app_company_id() AND p.stock_qty <> 0 ORDER BY p.code""")
         self.show("Available Stock Info", html_table(
-            ["Code", "Product", "Category", "Company", "Qty", "Pur.Rate", "Total Price"],
-            [[r["code"], r["model_name"], r["category"], r["company"], _f(r["stock_qty"]),
+            ["Code", "Product", "Category", "Brand", "Qty", "Pur.Rate", "Total Price"],
+            [[r["code"], r["model_name"], r["category"], r["brand"], _f(r["stock_qty"]),
               _f(r["purchase_rate"]), _f(r["value"])] for r in rows],
             ["Total", "", "", "", _f(sum(r["stock_qty"] for r in rows)), None,
              _f(sum(r["value"] for r in rows))]))
@@ -120,10 +121,12 @@ class Reports:
             return
         inc = db().fetch_all(
             """SELECT income_date AS d, description, amount FROM incomes
-               WHERE income_date BETWEEN %s AND %s ORDER BY income_date""", rng)
+               WHERE company_id = app_company_id() AND income_date BETWEEN %s AND %s
+               ORDER BY income_date""", rng)
         exp = db().fetch_all(
             """SELECT expense_date AS d, description, amount FROM expenses
-               WHERE expense_date BETWEEN %s AND %s ORDER BY expense_date""", rng)
+               WHERE company_id = app_company_id() AND expense_date BETWEEN %s AND %s
+               ORDER BY expense_date""", rng)
         body = ("<h4>Income</h4>" + html_table(
                     ["Date", "Description", "Amount"],
                     [[r["d"].strftime("%d %b %Y"), r["description"], _f(r["amount"])] for r in inc],
@@ -139,7 +142,8 @@ class Reports:
             """SELECT i.schedule_date, s.invoice_no, c.name, c.contact_no, i.amount
                FROM installments i JOIN sales s ON s.id = i.sale_id
                JOIN customers c ON c.id = s.customer_id
-               WHERE i.status = 'Due' AND i.schedule_date >= CURRENT_DATE
+               WHERE s.company_id = app_company_id()
+                     AND i.status = 'Due' AND i.schedule_date >= CURRENT_DATE
                ORDER BY i.schedule_date LIMIT 200""")
         self.show("Upcoming Installment", html_table(
             ["Schedule", "Invoice No", "Customer", "Contact No", "Amount"],
@@ -155,7 +159,8 @@ class Reports:
             """SELECT i.paid_date, s.invoice_no, c.name, i.paid_amount
                FROM installments i JOIN sales s ON s.id = i.sale_id
                JOIN customers c ON c.id = s.customer_id
-               WHERE i.status = 'Paid' AND i.paid_date BETWEEN %s AND %s
+               WHERE s.company_id = app_company_id()
+                     AND i.status = 'Paid' AND i.paid_date BETWEEN %s AND %s
                ORDER BY i.paid_date""", rng)
         self.show("Installment Collection", html_table(
             ["Pay Date", "Invoice No", "Customer", "Amount"],
@@ -169,7 +174,8 @@ class Reports:
                FROM installments i JOIN sales s ON s.id = i.sale_id
                JOIN customers c ON c.id = s.customer_id
                JOIN customer_dues d ON d.id = c.id
-               WHERE i.status = 'Due' AND i.schedule_date < CURRENT_DATE
+               WHERE s.company_id = app_company_id()
+                     AND i.status = 'Due' AND i.schedule_date < CURRENT_DATE
                ORDER BY c.name""")
         self.show("Defaulting Customer List", html_table(
             ["Code", "Customer Name", "Contact No", "Address", "Total Due"],
@@ -183,7 +189,8 @@ class Reports:
                        SUM(flat_discount) AS discount, SUM(net_total) AS net,
                        SUM(paid_amount) AS received,
                        SUM(net_total - paid_amount) AS due
-                FROM sales WHERE sales_date BETWEEN %s AND %s
+                FROM sales
+                WHERE company_id = app_company_id() AND sales_date BETWEEN %s AND %s
                 GROUP BY grp ORDER BY grp""", rng)
         self.show(label, html_table(
             ["Date", "Total Sales", "Discount/Adjust", "Net Sales", "Receive Amt", "Due"],
@@ -215,7 +222,8 @@ class Reports:
             f"""SELECT {group_expr} AS grp, SUM(gross_total) AS total,
                        SUM(flat_discount) AS discount, SUM(net_total) AS net,
                        SUM(paid_amount) AS paid, SUM(net_total - paid_amount) AS due
-                FROM purchases WHERE purchase_date BETWEEN %s AND %s
+                FROM purchases
+                WHERE company_id = app_company_id() AND purchase_date BETWEEN %s AND %s
                 GROUP BY grp ORDER BY grp""", rng)
         self.show(label, html_table(
             ["Date", "Total Purchase", "Discount", "Net Purchase", "Paid Amt", "Due"],
@@ -249,7 +257,7 @@ class Reports:
             """SELECT c.code, c.name, COUNT(s.id) AS orders, SUM(s.net_total) AS net,
                       SUM(s.paid_amount) AS paid, SUM(s.net_total - s.paid_amount) AS due
                FROM sales s JOIN customers c ON c.id = s.customer_id
-               WHERE s.sales_date BETWEEN %s AND %s
+               WHERE s.company_id = app_company_id() AND s.sales_date BETWEEN %s AND %s
                GROUP BY c.code, c.name ORDER BY c.name""", rng)
         self.show("Customer Wise Sales", html_table(
             ["Code", "Customer", "Orders", "Net Sales", "Received", "Due"],
@@ -266,7 +274,7 @@ class Reports:
             """SELECT s.code, s.name, COUNT(p.id) AS orders, SUM(p.net_total) AS net,
                       SUM(p.paid_amount) AS paid, SUM(p.net_total - p.paid_amount) AS due
                FROM purchases p JOIN suppliers s ON s.id = p.supplier_id
-               WHERE p.purchase_date BETWEEN %s AND %s
+               WHERE p.company_id = app_company_id() AND p.purchase_date BETWEEN %s AND %s
                GROUP BY s.code, s.name ORDER BY s.name""", rng)
         self.show("Supplier Wise Purchase", html_table(
             ["Code", "Supplier", "Orders", "Net Purchase", "Paid", "Due"],
@@ -283,10 +291,11 @@ class Reports:
         sales = db().fetch_all(
             """SELECT sales_date AS d, 'Sale ' || invoice_no AS what, net_total AS debit,
                       paid_amount AS credit
-               FROM sales WHERE customer_id = %s
+               FROM sales WHERE company_id = app_company_id() AND customer_id = %s
                UNION ALL
                SELECT entry_date, 'Collection ' || receipt_no, 0, amount + adjustment
-               FROM cash_collections WHERE customer_id = %s
+               FROM cash_collections
+               WHERE company_id = app_company_id() AND customer_id = %s
                ORDER BY d""", (rec["id"], rec["id"]))
         balance = _f(db().scalar("SELECT opening_due FROM customers WHERE id = %s", (rec["id"],)))
         rows = [["", "Opening Due", None, None, balance]]
@@ -307,10 +316,11 @@ class Reports:
         entries = db().fetch_all(
             """SELECT purchase_date AS d, 'Purchase ' || challan_no AS what,
                       net_total AS debit, paid_amount AS credit
-               FROM purchases WHERE supplier_id = %s
+               FROM purchases WHERE company_id = app_company_id() AND supplier_id = %s
                UNION ALL
                SELECT entry_date, 'Payment ' || voucher_no, 0, amount
-               FROM cash_deliveries WHERE supplier_id = %s
+               FROM cash_deliveries
+               WHERE company_id = app_company_id() AND supplier_id = %s
                ORDER BY d""", (rec["id"], rec["id"]))
         balance = _f(db().scalar("SELECT opening_due FROM suppliers WHERE id = %s", (rec["id"],)))
         rows = [["", "Opening Due", None, None, balance]]
@@ -328,7 +338,8 @@ class Reports:
         rows = db().fetch_all(
             """SELECT t.entry_date, t.tran_no, b.name AS bank, t.tran_type, t.amount, t.remarks
                FROM bank_transactions t LEFT JOIN banks b ON b.id = t.bank_id
-               WHERE t.entry_date BETWEEN %s AND %s ORDER BY t.entry_date""", rng)
+               WHERE t.company_id = app_company_id()
+                     AND t.entry_date BETWEEN %s AND %s ORDER BY t.entry_date""", rng)
         if not rows:
             info(self.parent, "No Record Found.")
             return
@@ -344,11 +355,13 @@ class Reports:
         rec = db().fetch_all(
             """SELECT cc.entry_date AS d, c.name, cc.amount FROM cash_collections cc
                JOIN customers c ON c.id = cc.customer_id
-               WHERE cc.entry_date BETWEEN %s AND %s ORDER BY cc.entry_date""", rng)
+               WHERE cc.company_id = app_company_id()
+                     AND cc.entry_date BETWEEN %s AND %s ORDER BY cc.entry_date""", rng)
         pay = db().fetch_all(
             """SELECT cd.entry_date AS d, s.name, cd.amount FROM cash_deliveries cd
                JOIN suppliers s ON s.id = cd.supplier_id
-               WHERE cd.entry_date BETWEEN %s AND %s ORDER BY cd.entry_date""", rng)
+               WHERE cd.company_id = app_company_id()
+                     AND cd.entry_date BETWEEN %s AND %s ORDER BY cd.entry_date""", rng)
         body = ("<h4>Cash Receive (from customers)</h4>" + html_table(
                     ["Date", "Customer", "Amount"],
                     [[r["d"].strftime("%d %b %Y"), r["name"], _f(r["amount"])] for r in rec],
@@ -374,7 +387,8 @@ class Reports:
                                 WHERE si.product_id = p.id
                                   AND s.sales_date BETWEEN %s AND %s), 0) AS sold,
                       p.stock_qty
-               FROM products p ORDER BY p.code""", rng + rng)
+               FROM products p
+               WHERE p.company_id = app_company_id() ORDER BY p.code""", rng + rng)
         self.show("Product Wise Sales and Purchase", html_table(
             ["Code", "Product", "Purchased Qty", "Sold Qty", "Current Stock"],
             [[r["code"], r["model_name"], _f(r["bought"]), _f(r["sold"]), _f(r["stock_qty"])]
@@ -389,7 +403,7 @@ class Reports:
                       SUM(si.qty * p.purchase_rate) AS cost
                FROM sale_items si JOIN sales s ON s.id = si.sale_id
                JOIN products p ON p.id = si.product_id
-               WHERE s.sales_date BETWEEN %s AND %s
+               WHERE s.company_id = app_company_id() AND s.sales_date BETWEEN %s AND %s
                GROUP BY p.code, p.model_name ORDER BY p.code""", rng)
         self.show("Company Benefit (By Product)", html_table(
             ["Code", "Product", "Qty", "Sales Amt", "Cost", "Benefit"],
@@ -405,7 +419,8 @@ class Reports:
                FROM sale_items si JOIN sales s ON s.id = si.sale_id
                JOIN customers c ON c.id = s.customer_id
                JOIN products p ON p.id = si.product_id
-               WHERE s.sales_date BETWEEN %s AND %s GROUP BY c.name ORDER BY c.name""", rng)
+               WHERE s.company_id = app_company_id() AND s.sales_date BETWEEN %s AND %s
+               GROUP BY c.name ORDER BY c.name""", rng)
         self.show("Customer Wise Benefit", html_table(
             ["Customer", "Sales Amt", "Cost", "Benefit"],
             [[r["name"], _f(r["sold_amt"]), _f(r["cost"]),
@@ -416,7 +431,8 @@ class Reports:
             """SELECT r.return_date, r.return_no, s.invoice_no, c.name, r.net_total,
                       r.back_amount
                FROM sales_returns r JOIN sales s ON s.id = r.sale_id
-               JOIN customers c ON c.id = s.customer_id ORDER BY r.return_date DESC""")
+               JOIN customers c ON c.id = s.customer_id
+               WHERE r.company_id = app_company_id() ORDER BY r.return_date DESC""")
         self.show("Customer Wise Returns Details", html_table(
             ["Return Date", "Return No", "Invoice", "Customer", "Net Total", "Back Amount"],
             [[r["return_date"].strftime("%d %b %Y"), r["return_no"], r["invoice_no"],
@@ -427,13 +443,20 @@ class Reports:
         if not rng:
             return
         q = lambda sql: _f(db().scalar(sql, rng))
-        cash_sales = q("SELECT SUM(paid_amount) FROM sales WHERE sales_date BETWEEN %s AND %s")
-        collections = q("SELECT SUM(amount) FROM cash_collections WHERE entry_date BETWEEN %s AND %s")
-        other_income = q("SELECT SUM(amount) FROM incomes WHERE income_date BETWEEN %s AND %s")
-        cash_paid = q("SELECT SUM(paid_amount) FROM purchases WHERE purchase_date BETWEEN %s AND %s")
-        deliveries = q("SELECT SUM(amount) FROM cash_deliveries WHERE entry_date BETWEEN %s AND %s")
-        expense = q("SELECT SUM(amount) FROM expenses WHERE expense_date BETWEEN %s AND %s")
-        returns = q("SELECT SUM(back_amount) FROM sales_returns WHERE return_date BETWEEN %s AND %s")
+        cash_sales = q("SELECT SUM(paid_amount) FROM sales "
+                       "WHERE company_id = app_company_id() AND sales_date BETWEEN %s AND %s")
+        collections = q("SELECT SUM(amount) FROM cash_collections "
+                        "WHERE company_id = app_company_id() AND entry_date BETWEEN %s AND %s")
+        other_income = q("SELECT SUM(amount) FROM incomes "
+                         "WHERE company_id = app_company_id() AND income_date BETWEEN %s AND %s")
+        cash_paid = q("SELECT SUM(paid_amount) FROM purchases "
+                      "WHERE company_id = app_company_id() AND purchase_date BETWEEN %s AND %s")
+        deliveries = q("SELECT SUM(amount) FROM cash_deliveries "
+                       "WHERE company_id = app_company_id() AND entry_date BETWEEN %s AND %s")
+        expense = q("SELECT SUM(amount) FROM expenses "
+                    "WHERE company_id = app_company_id() AND expense_date BETWEEN %s AND %s")
+        returns = q("SELECT SUM(back_amount) FROM sales_returns "
+                    "WHERE company_id = app_company_id() AND return_date BETWEEN %s AND %s")
         debit = cash_sales + collections + other_income
         credit = cash_paid + deliveries + expense + returns
         body = html_table(
@@ -452,14 +475,18 @@ class Reports:
             return
         q = lambda sql: _f(db().scalar(sql, rng))
         sales_amt = q("SELECT SUM(si.total) FROM sale_items si JOIN sales s ON s.id = si.sale_id "
-                      "WHERE s.sales_date BETWEEN %s AND %s")
+                      "WHERE s.company_id = app_company_id() AND s.sales_date BETWEEN %s AND %s")
         cogs = q("SELECT SUM(si.qty * p.purchase_rate) FROM sale_items si "
                  "JOIN sales s ON s.id = si.sale_id JOIN products p ON p.id = si.product_id "
-                 "WHERE s.sales_date BETWEEN %s AND %s")
-        discount = q("SELECT SUM(flat_discount) FROM sales WHERE sales_date BETWEEN %s AND %s")
-        other_income = q("SELECT SUM(amount) FROM incomes WHERE income_date BETWEEN %s AND %s")
-        expense = q("SELECT SUM(amount) FROM expenses WHERE expense_date BETWEEN %s AND %s")
-        interest = q("SELECT SUM(interest_amount) FROM sales WHERE sales_date BETWEEN %s AND %s")
+                 "WHERE s.company_id = app_company_id() AND s.sales_date BETWEEN %s AND %s")
+        discount = q("SELECT SUM(flat_discount) FROM sales "
+                     "WHERE company_id = app_company_id() AND sales_date BETWEEN %s AND %s")
+        other_income = q("SELECT SUM(amount) FROM incomes "
+                         "WHERE company_id = app_company_id() AND income_date BETWEEN %s AND %s")
+        expense = q("SELECT SUM(amount) FROM expenses "
+                    "WHERE company_id = app_company_id() AND expense_date BETWEEN %s AND %s")
+        interest = q("SELECT SUM(interest_amount) FROM sales "
+                     "WHERE company_id = app_company_id() AND sales_date BETWEEN %s AND %s")
         gross = sales_amt - cogs
         net = gross - discount + other_income + interest - expense
         body = html_table(["Particulars", "Amount"],

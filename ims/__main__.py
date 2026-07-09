@@ -49,10 +49,26 @@ def main() -> int:
     from .login import LoginDialog
     from .main_window import MainWindow
 
+    def select_startup_company() -> bool:
+        """Point the session at the default company (or any existing one)."""
+        from .db import db, set_current_company
+        cid = db().scalar("SELECT default_company_id FROM system_info WHERE id = 1")
+        if cid is None:
+            cid = db().scalar("SELECT id FROM companies ORDER BY id LIMIT 1")
+        if cid is None:
+            QMessageBox.critical(
+                None, "IMS",
+                "No company found. Load the schema with:  python -m ims --initdb")
+            return False
+        set_current_company(cid)
+        return True
+
     while True:
         login = LoginDialog()
         if not login.exec():
             return 0
+        if not select_startup_company():
+            return 1
         window = MainWindow(login.user)
         window.showMaximized()
         app.exec()

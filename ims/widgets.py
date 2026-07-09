@@ -339,12 +339,13 @@ class LookupField(QWidget):
 # Reporting helpers
 
 def company_header_html() -> str:
-    si = db().fetch_one("SELECT * FROM system_info WHERE id = 1") or {}
+    from .db import current_company
+    c = current_company() or {}
     return (
         f"<div style='text-align:center'>"
-        f"<h1 style='margin:0'>{si.get('company_name', '')}</h1>"
-        f"<p style='margin:2px'>{si.get('company_address', '')}<br>"
-        f"<b>Mobile: {si.get('telephone_no', '')}</b></p></div><hr>"
+        f"<h1 style='margin:0'>{c.get('name', '')}</h1>"
+        f"<p style='margin:2px'>{c.get('address', '')}<br>"
+        f"<b>Mobile: {c.get('telephone_no', '')}</b></p></div><hr>"
     )
 
 
