@@ -9,7 +9,7 @@ from .db import db, money
 from .widgets import SearchBar, DataTable, html_table, preview_html, info, error
 from .basic import SystemInfoDialog, SimpleNameDialog, ProductsDialog
 from .people import EmployeesDialog, CustomersDialog, SuppliersDialog
-from .users import UsersDialog, ChangePasswordDialog, RolesDialog
+from .users import UsersDialog, ChangePasswordDialog, RolesDialog, MENU_KEYS, get_role_permissions
 from .settings import BackupDatabaseDialog, RestoreDatabaseDialog
 from .inventory import (PurchaseOrdersDialog, SalesOrdersDialog, CreditSalesDialog,
                         ReturnsDialog, PurchaseReturnsDialog, DamageProductsDialog)
@@ -18,15 +18,15 @@ from .accounts import (CashCollectionsDialog, CashDeliveriesDialog, BankTransact
 from .reports import AllReportDialog, Reports
 
 NAV_BUTTONS = [
-    ("Product\nConfiguration", "#ffffff", "#1c3f92"),
-    ("Purchase\nOrder", "#41d0c4", "#00332f"),
-    ("Sales Order", "#fdf3f3", "#8b1a1a"),
-    ("Credit Sales", "#f8d2f1", "#5c1049"),
-    ("Cash\nCollection", "#eeb0f4", "#3c1050"),
-    ("Cash\nDelivery", "#e9c4d9", "#4d1030"),
-    ("Income", "#c7af78", "#3a2c00"),
-    ("Expense", "#d1b399", "#3a2410"),
-    ("MIS Report", "#f2a81a", "#4a3000"),
+    ("Product\nConfiguration", "#ffffff", "#1c3f92", "Inventory Management"),
+    ("Purchase\nOrder", "#41d0c4", "#00332f", "Inventory Management"),
+    ("Sales Order", "#fdf3f3", "#8b1a1a", "Inventory Management"),
+    ("Credit Sales", "#f8d2f1", "#5c1049", "Inventory Management"),
+    ("Cash\nCollection", "#eeb0f4", "#3c1050", "Account Management"),
+    ("Cash\nDelivery", "#e9c4d9", "#4d1030", "Account Management"),
+    ("Income", "#c7af78", "#3a2c00", "Account Management"),
+    ("Expense", "#d1b399", "#3a2410", "Account Management"),
+    ("MIS Report", "#f2a81a", "#4a3000", "MIS Report"),
 ]
 
 
@@ -66,23 +66,29 @@ class MainWindow(QMainWindow):
     # -- UI -------------------------------------------------------------------
     def _build_menus(self):
         bar = self.menuBar()
+        role = self.user.get("role", "Staff")
+        self.is_admin = role == "Admin"
+        self.permitted = set(MENU_KEYS) if self.is_admin else get_role_permissions(role)
+
+        basic_config = [
+            ("System Information", lambda: SystemInfoDialog(self).exec()),
+            ("Companies", lambda: SimpleNameDialog("companies", "Companies", self).exec()),
+            ("Category", lambda: SimpleNameDialog("categories", "Category", self).exec()),
+            ("Product", self.open_products),
+            ("Bank", lambda: SimpleNameDialog("banks", "Bank", self).exec()),
+            ("Card Type Setups", lambda: SimpleNameDialog("card_types", "Card Type", self).exec()),
+        ] if "Basic" in self.permitted else []
+        basic_items = basic_config + ([None] if basic_config else []) + [
+            ("LogOut", self.logout), ("Exit", self.close)]
+
         menus = {
-            "Basic": [
-                ("System Information", lambda: SystemInfoDialog(self).exec()),
-                ("Companies", lambda: SimpleNameDialog("companies", "Companies", self).exec()),
-                ("Category", lambda: SimpleNameDialog("categories", "Category", self).exec()),
-                ("Product", self.open_products),
-                ("Bank", lambda: SimpleNameDialog("banks", "Bank", self).exec()),
-                ("Card Type Setups", lambda: SimpleNameDialog("card_types", "Card Type", self).exec()),
-                None,
-                ("LogOut", self.logout),
-                ("Exit", self.close),
-            ],
-            "Employee": [("Employee List", lambda: EmployeesDialog(self).exec())],
+            "Basic": basic_items,
+            "Employee": [("Employee List", lambda: EmployeesDialog(self).exec())]
+                        if "Employee" in self.permitted else [],
             "Customer and Supplier": [
                 ("Customer Info", self.open_customers),
                 ("Supplier Info", self.open_suppliers),
-            ],
+            ] if "Customer and Supplier" in self.permitted else [],
             "Inventory Management": [
                 ("Product Configuration", self.open_products),
                 ("Purchase Order", self.open_purchases),
@@ -91,7 +97,7 @@ class MainWindow(QMainWindow):
                 ("Sales Return", self.open_returns),
                 ("Purchase Return", self.open_purchase_returns),
                 ("Damage Product", self.open_damage_products),
-            ],
+            ] if "Inventory Management" in self.permitted else [],
             "Account Management": [
                 ("Cash Collection", self.open_collections),
                 ("Cash Delivery", self.open_deliveries),
@@ -100,7 +106,7 @@ class MainWindow(QMainWindow):
                 ("Share Investments", lambda: InvestmentsDialog(self).exec()),
                 ("Income", self.open_income),
                 ("Expense", self.open_expense),
-            ],
+            ] if "Account Management" in self.permitted else [],
             "MIS Report": [
                 ("Daily Sales Report", lambda: Reports(self).daily_sales()),
                 ("Daily Purchase Report", lambda: Reports(self).daily_purchase()),
@@ -114,13 +120,13 @@ class MainWindow(QMainWindow):
                 ("Supplier Wise Purchase", lambda: Reports(self).supplier_wise_purchase()),
                 None,
                 ("Summary Report", self.open_reports),
-            ],
-            "Settings":[
+            ] if "MIS Report" in self.permitted else [],
+            "Settings": [
                 ("Change Password", self.open_change_password),
-                ("User Management", self.open_user_management),
-                ("Roles and Permissions", self.open_roles),
+                *([("User Management", self.open_user_management)] if self.is_admin else []),
+                *([("Roles and Permissions", self.open_roles)] if self.is_admin else []),
                 ("Backup Database", lambda: BackupDatabaseDialog(self).exec()),
-                ("Restore Database", self.open_restore_database),
+                *([("Restore Database", self.open_restore_database)] if self.is_admin else []),
             ],
             "About": [
                 ("About IMS", lambda: SimpleNameDialog("about", "About IMS", self).exec()),
@@ -129,6 +135,8 @@ class MainWindow(QMainWindow):
             ],
         }
         for title, actions in menus.items():
+            if not actions:
+                continue
             menu = bar.addMenu(title)
             for entry in actions:
                 if entry is None:
@@ -154,7 +162,9 @@ class MainWindow(QMainWindow):
         handlers = [self.open_products, self.open_purchases, self.open_sales,
                     self.open_credit_sales, self.open_collections, self.open_deliveries,
                     self.open_income, self.open_expense, self.open_reports]
-        for (label, bg, fg), fn in zip(NAV_BUTTONS, handlers):
+        for (label, bg, fg, menu_key), fn in zip(NAV_BUTTONS, handlers):
+            if menu_key not in self.permitted:
+                continue
             b = QPushButton(label)
             b.setMinimumHeight(58)
             b.setMinimumWidth(96)

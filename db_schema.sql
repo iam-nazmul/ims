@@ -9,7 +9,7 @@ DROP TABLE IF EXISTS
     cash_collections, cash_deliveries, bank_transactions,
     investments, investment_heads, incomes, expenses,
     employees, customers, suppliers, products,
-    card_types, banks, categories, companies, system_info, users,
+    card_types, banks, categories, companies, system_info, role_permissions, users,
     sales_orders, purchase_orders, cash_collections_old, income
     CASCADE;
 
@@ -20,6 +20,14 @@ CREATE TABLE users (
     full_name VARCHAR(100) DEFAULT '',
     role VARCHAR(20) NOT NULL DEFAULT 'Staff',   -- Admin | Manager | Supervisor | Staff
     is_active BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+-- Which top-level menus each non-Admin role may see. Admin always has full
+-- access regardless of this table. Absence of a row means denied (fail closed).
+CREATE TABLE role_permissions (
+    role VARCHAR(20) NOT NULL,
+    menu_key VARCHAR(50) NOT NULL,
+    PRIMARY KEY (role, menu_key)
 );
 
 CREATE TABLE system_info (
@@ -324,6 +332,14 @@ INSERT INTO users (username, password_hash, full_name, role) VALUES
 ('sajad', '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4', 'Sajad', 'Admin'),
 -- password: admin
 ('admin', '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918', 'Administrator', 'Admin');
+
+-- Default menu access per role (Admin is always full access, not stored here).
+INSERT INTO role_permissions (role, menu_key) VALUES
+('Manager', 'Basic'), ('Manager', 'Employee'), ('Manager', 'Customer and Supplier'),
+('Manager', 'Inventory Management'), ('Manager', 'Account Management'), ('Manager', 'MIS Report'),
+('Supervisor', 'Customer and Supplier'), ('Supervisor', 'Inventory Management'),
+('Supervisor', 'Account Management'), ('Supervisor', 'MIS Report'),
+('Staff', 'Customer and Supplier'), ('Staff', 'Inventory Management');
 
 INSERT INTO system_info (id, company_name, company_address, telephone_no, email_address, web_address, system_start_date)
 VALUES (1, 'Shahajahan Enterprise', 'Kesorhat, Mohanpur, Rajshahi', '+8801761777748', '', '', '2018-12-01');
