@@ -67,12 +67,14 @@ class UserForm(QDialog):
         row.addWidget(close)
         form.addRow(row)
 
+        self.employee_id = None
         if rec_id:
             u = db().fetch_one("SELECT * FROM users WHERE id = %s", (rec_id,))
             self.username.setText(u["username"])
             self.full_name.setText(u["full_name"] or "")
             self.role.setCurrentText(u["role"])
             self.active.setChecked(u["is_active"])
+            self.employee_id = u["employee_id"]
             self.password.setPlaceholderText("Leave blank to keep current password")
             self.confirm.setPlaceholderText("Leave blank to keep current password")
 
@@ -89,25 +91,38 @@ class UserForm(QDialog):
             error(self, "Password and Confirm Password do not match.")
             return
         full_name = self.full_name.text().strip()
+        if not self.rec_id and not full_name:
+            error(self, "Full name is required for a new user.")
+            return
         role = self.role.currentText()
         active = self.active.isChecked()
         try:
             if self.rec_id:
-                if pw:
-                    db().execute(
-                        """UPDATE users SET username=%s, full_name=%s, role=%s,
-                               is_active=%s, password_hash=%s WHERE id=%s""",
-                        (username, full_name, role, active, hash_pw(pw), self.rec_id))
-                else:
-                    db().execute(
-                        """UPDATE users SET username=%s, full_name=%s, role=%s,
-                               is_active=%s WHERE id=%s""",
-                        (username, full_name, role, active, self.rec_id))
+                with db().transaction() as cur:
+                    if pw:
+                        cur.execute(
+                            """UPDATE users SET username=%s, full_name=%s, role=%s,
+                                   is_active=%s, password_hash=%s WHERE id=%s""",
+                            (username, full_name, role, active, hash_pw(pw), self.rec_id))
+                    else:
+                        cur.execute(
+                            """UPDATE users SET username=%s, full_name=%s, role=%s,
+                                   is_active=%s WHERE id=%s""",
+                            (username, full_name, role, active, self.rec_id))
+                    if self.employee_id:
+                        cur.execute("UPDATE employees SET name=%s WHERE id=%s",
+                                    (full_name, self.employee_id))
             else:
-                db().execute(
-                    """INSERT INTO users (username, full_name, role, is_active, password_hash)
-                       VALUES (%s,%s,%s,%s,%s)""",
-                    (username, full_name, role, active, hash_pw(pw)))
+                emp_code = db().next_code("employees")
+                with db().transaction() as cur:
+                    cur.execute(
+                        "INSERT INTO employees (code, name) VALUES (%s,%s) RETURNING id",
+                        (emp_code, full_name))
+                    employee_id = cur.fetchone()["id"]
+                    cur.execute(
+                        """INSERT INTO users (username, full_name, role, is_active,
+                               password_hash, employee_id) VALUES (%s,%s,%s,%s,%s,%s)""",
+                        (username, full_name, role, active, hash_pw(pw), employee_id))
         except Exception as exc:
             db().conn.rollback()
             error(self, f"Cannot save user:\n{exc}")

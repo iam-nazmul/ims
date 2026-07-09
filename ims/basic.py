@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import os
+import shutil
+
 from .qt import *
 from .db import db, money
-from .widgets import (DIALOG_QSS, ListDialog, LookupField, dedit, pydate,
+from .widgets import (DIALOG_QSS, ListDialog, LookupField, MEDIA_DIR, dedit, pydate,
                       dspin, info, error)
+
+REPO_ROOT = os.path.dirname(MEDIA_DIR)
+PRODUCT_IMAGE_DIR = os.path.join(MEDIA_DIR, "images", "products")
+PRODUCT_IMAGE_RELDIR = "media/images/products"
 
 
 class SystemInfoDialog(QDialog):
@@ -146,11 +153,13 @@ class ProductDetailDialog(QDialog):
     def __init__(self, rec_id=None, parent=None):
         super().__init__(parent)
         self.rec_id = rec_id
+        self.image_filename = ""
         self.setWindowTitle("Product Detail")
         self.setMinimumWidth(620)
         self.setStyleSheet(DIALOG_QSS)
 
         lay = QVBoxLayout(self)
+        top = QHBoxLayout()
         form = QFormLayout()
         self.code = QLineEdit()
         self.code.setReadOnly(True)
@@ -172,7 +181,23 @@ class ProductDetailDialog(QDialog):
         form.addRow("Product Type", self.ptype)
         form.addRow("Model Name", self.model)
         form.addRow("Warning Qty", self.warning)
-        lay.addLayout(form)
+        top.addLayout(form, 1)
+
+        img_col = QVBoxLayout()
+        self.image_preview = QLabel("No Image")
+        self.image_preview.setFixedSize(120, 120)
+        self.image_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.image_preview.setStyleSheet("border: 1px solid #7f9db9; background: white;")
+        img_col.addWidget(self.image_preview)
+        upload_btn = QPushButton("Upload Image")
+        upload_btn.clicked.connect(self.choose_image)
+        img_col.addWidget(upload_btn)
+        remove_btn = QPushButton("Remove Image")
+        remove_btn.clicked.connect(self.remove_image)
+        img_col.addWidget(remove_btn)
+        img_col.addStretch(1)
+        top.addLayout(img_col)
+        lay.addLayout(top)
 
         wbox = QGroupBox("Warrenty")
         wgrid = QGridLayout(wbox)
@@ -229,8 +254,37 @@ class ProductDetailDialog(QDialog):
             self.pur_rate.setValue(float(p["purchase_rate"]))
             self.sales_rate.setValue(float(p["sales_rate"]))
             self.mrp_rate.setValue(float(p["mrp_rate"]))
+            self.image_filename = p["image_path"] or ""
         else:
             self.code.setText(db().next_code("products", 6))
+        self._update_preview()
+
+    def choose_image(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Upload Product Image", "", "Images (*.png *.jpg *.jpeg *.bmp)")
+        if not path:
+            return
+        os.makedirs(PRODUCT_IMAGE_DIR, exist_ok=True)
+        ext = os.path.splitext(path)[1].lower()
+        filename = f"product_{self.code.text()}{ext}"
+        shutil.copyfile(path, os.path.join(PRODUCT_IMAGE_DIR, filename))
+        self.image_filename = f"{PRODUCT_IMAGE_RELDIR}/{filename}"
+        self._update_preview()
+
+    def remove_image(self):
+        self.image_filename = ""
+        self._update_preview()
+
+    def _update_preview(self):
+        pix = QPixmap(os.path.join(REPO_ROOT, self.image_filename)) \
+            if self.image_filename else QPixmap()
+        if pix.isNull():
+            self.image_preview.clear()
+            self.image_preview.setText("No Image")
+        else:
+            self.image_preview.setPixmap(pix.scaled(
+                120, 120, Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation))
 
     def save(self):
         if not self.model.text().strip():
@@ -241,21 +295,21 @@ class ProductDetailDialog(QDialog):
                   self.warranty["Compressor"].value(), self.warranty["Panel"].value(),
                   self.warranty["Motor"].value(), self.warranty["Spareparts"].value(),
                   self.warranty["Service"].value(), self.pur_rate.value(),
-                  self.sales_rate.value(), self.mrp_rate.value())
+                  self.sales_rate.value(), self.mrp_rate.value(), self.image_filename)
         if self.rec_id:
             db().execute(
                 """UPDATE products SET company_id=%s, category_id=%s, product_type=%s,
                        model_name=%s, warning_qty=%s, warranty_compressor=%s, warranty_panel=%s,
                        warranty_motor=%s, warranty_spareparts=%s, warranty_service=%s,
-                       purchase_rate=%s, sales_rate=%s, mrp_rate=%s WHERE id=%s""",
+                       purchase_rate=%s, sales_rate=%s, mrp_rate=%s, image_path=%s WHERE id=%s""",
                 params + (self.rec_id,))
         else:
             db().execute(
                 """INSERT INTO products (company_id, category_id, product_type, model_name,
                        warning_qty, warranty_compressor, warranty_panel, warranty_motor,
                        warranty_spareparts, warranty_service, purchase_rate, sales_rate,
-                       mrp_rate, code)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                       mrp_rate, image_path, code)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 params + (self.code.text(),))
         self.accept()
 

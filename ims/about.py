@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import os
+
 from .qt import *
 from .db import db
-from .widgets import DIALOG_QSS
+from .widgets import DIALOG_QSS, MEDIA_DIR
+
+SUPPORT_PHOTO = os.path.join(MEDIA_DIR, "images", "Nazmul.png")
 
 HELP_HTML = """
 <h2>Getting Started</h2>
@@ -74,10 +78,23 @@ class ContactSupportDialog(QDialog):
         lay.addWidget(title)
 
         c = SUPPORT_CONTACT
+        row = QHBoxLayout()
+        photo = QLabel()
+        pix = QPixmap(SUPPORT_PHOTO)
+        if not pix.isNull():
+            photo.setPixmap(pix.scaled(
+                80, 80, Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation))
+        photo.setFixedSize(80, 80)
+        photo.setScaledContents(False)
+        photo.setStyleSheet("border: 1px solid #7f9db9; background: white;")
+        row.addWidget(photo)
+
         info = QLabel(
             f"<b>{c['name']}</b><br>Phone: {c['phone']}<br>Email: {c['email']}")
         info.setWordWrap(True)
-        lay.addWidget(info)
+        row.addWidget(info, 1)
+        lay.addLayout(row)
 
         close = QPushButton("Close")
         close.clicked.connect(self.accept)

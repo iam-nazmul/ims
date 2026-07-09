@@ -19,7 +19,8 @@ CREATE TABLE users (
     password_hash VARCHAR(64) NOT NULL,          -- sha256 hex
     full_name VARCHAR(100) DEFAULT '',
     role VARCHAR(20) NOT NULL DEFAULT 'Staff',   -- Admin | Manager | Supervisor | Staff
-    is_active BOOLEAN NOT NULL DEFAULT TRUE
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    employee_id INTEGER                          -- linked employee record; FK added below
 );
 
 -- Which top-level menus each non-Admin role may see. Admin always has full
@@ -80,7 +81,8 @@ CREATE TABLE products (
     purchase_rate NUMERIC(14,2) DEFAULT 0,
     sales_rate NUMERIC(14,2) DEFAULT 0,
     mrp_rate NUMERIC(14,2) DEFAULT 0,
-    stock_qty NUMERIC(12,2) DEFAULT 0
+    stock_qty NUMERIC(12,2) DEFAULT 0,
+    image_path VARCHAR(255) DEFAULT ''       -- filename under media/images/products/
 );
 
 CREATE TABLE employees (
@@ -99,6 +101,9 @@ CREATE TABLE employees (
     permanent_address TEXT DEFAULT '',
     gross_salary NUMERIC(14,2) DEFAULT 0
 );
+
+ALTER TABLE users ADD CONSTRAINT users_employee_id_fkey
+    FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL;
 
 CREATE TABLE customers (
     id SERIAL PRIMARY KEY,
