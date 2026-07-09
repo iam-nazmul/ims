@@ -6,9 +6,11 @@ from datetime import date
 
 from .qt import *
 from .db import db, money
-from .widgets import SearchBar, DataTable, html_table, preview_html, info
+from .widgets import SearchBar, DataTable, html_table, preview_html, info, error
 from .basic import SystemInfoDialog, SimpleNameDialog, ProductsDialog
 from .people import EmployeesDialog, CustomersDialog, SuppliersDialog
+from .users import UsersDialog, ChangePasswordDialog, RolesDialog
+from .settings import BackupDatabaseDialog, RestoreDatabaseDialog
 from .inventory import (PurchaseOrdersDialog, SalesOrdersDialog, CreditSalesDialog,
                         ReturnsDialog, PurchaseReturnsDialog, DamageProductsDialog)
 from .accounts import (CashCollectionsDialog, CashDeliveriesDialog, BankTransactionsDialog,
@@ -112,6 +114,18 @@ class MainWindow(QMainWindow):
                 ("Supplier Wise Purchase", lambda: Reports(self).supplier_wise_purchase()),
                 None,
                 ("Summary Report", self.open_reports),
+            ],
+            "Settings":[
+                ("Change Password", self.open_change_password),
+                ("User Management", self.open_user_management),
+                ("Roles and Permissions", self.open_roles),
+                ("Backup Database", lambda: BackupDatabaseDialog(self).exec()),
+                ("Restore Database", self.open_restore_database),
+            ],
+            "About": [
+                ("About IMS", lambda: SimpleNameDialog("about", "About IMS", self).exec()),
+                ("Help", lambda: SimpleNameDialog("help", "Help", self).exec()),
+                ("Contact Support", lambda: SimpleNameDialog("contact", "Contact Support", self).exec())
             ],
         }
         for title, actions in menus.items():
@@ -293,6 +307,28 @@ class MainWindow(QMainWindow):
     def open_reports(self):
         AllReportDialog(self).exec()
         self.refresh()
+
+    def open_change_password(self):
+        ChangePasswordDialog(self.user, self).exec()
+
+    def open_user_management(self):
+        if self.user.get("role") != "Admin":
+            error(self, "Only Admin users can access User Management.")
+            return
+        UsersDialog(self.user, self).exec()
+
+    def open_roles(self):
+        if self.user.get("role") != "Admin":
+            error(self, "Only Admin users can view Roles and Permissions.")
+            return
+        RolesDialog(self).exec()
+
+    def open_restore_database(self):
+        if self.user.get("role") != "Admin":
+            error(self, "Only Admin users can restore the database.")
+            return
+        if RestoreDatabaseDialog(self).exec():
+            self.logout()
 
     def logout(self):
         self.logout_requested = True

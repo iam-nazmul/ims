@@ -75,6 +75,14 @@ def db() -> Database:
     return _db
 
 
+def reset_connection():
+    """Close the shared connection so the next db() call reconnects fresh."""
+    global _db
+    if _db is not None:
+        _db.close()
+        _db = None
+
+
 def money(v) -> str:
     """Format a numeric as 1,234.56."""
     if v is None:

@@ -46,5 +46,8 @@ class LoginDialog(QDialog):
         if not user:
             error(self, "Invalid user name or password.")
             return
+        if not user["is_active"]:
+            error(self, "This account has been disabled. Contact an administrator.")
+            return
         self.user = user
         self.accept()

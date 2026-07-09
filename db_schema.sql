@@ -17,7 +17,9 @@ CREATE TABLE users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
     password_hash VARCHAR(64) NOT NULL,          -- sha256 hex
-    full_name VARCHAR(100) DEFAULT ''
+    full_name VARCHAR(100) DEFAULT '',
+    role VARCHAR(20) NOT NULL DEFAULT 'Staff',   -- Admin | Manager | Supervisor | Staff
+    is_active BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 CREATE TABLE system_info (
@@ -317,11 +319,11 @@ FROM suppliers sp;
 
 -- Seed data ---------------------------------------------------------------
 
-INSERT INTO users (username, password_hash, full_name) VALUES
+INSERT INTO users (username, password_hash, full_name, role) VALUES
 -- password: 1234
-('sajad', '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4', 'Sajad'),
+('sajad', '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4', 'Sajad', 'Admin'),
 -- password: admin
-('admin', '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918', 'Administrator');
+('admin', '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918', 'Administrator', 'Admin');
 
 INSERT INTO system_info (id, company_name, company_address, telephone_no, email_address, web_address, system_start_date)
 VALUES (1, 'Shahajahan Enterprise', 'Kesorhat, Mohanpur, Rajshahi', '+8801761777748', '', '', '2018-12-01');
