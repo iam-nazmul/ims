@@ -11,6 +11,7 @@ from .basic import SystemInfoDialog, SimpleNameDialog, ProductsDialog
 from .people import EmployeesDialog, CustomersDialog, SuppliersDialog
 from .users import UsersDialog, ChangePasswordDialog, RolesDialog, MENU_KEYS, get_role_permissions
 from .settings import BackupDatabaseDialog, RestoreDatabaseDialog
+from .about import AboutDialog, HelpDialog, ContactSupportDialog
 from .inventory import (PurchaseOrdersDialog, SalesOrdersDialog, CreditSalesDialog,
                         ReturnsDialog, PurchaseReturnsDialog, DamageProductsDialog)
 from .accounts import (CashCollectionsDialog, CashDeliveriesDialog, BankTransactionsDialog,
@@ -129,9 +130,9 @@ class MainWindow(QMainWindow):
                 *([("Restore Database", self.open_restore_database)] if self.is_admin else []),
             ],
             "About": [
-                ("About IMS", lambda: SimpleNameDialog("about", "About IMS", self).exec()),
-                ("Help", lambda: SimpleNameDialog("help", "Help", self).exec()),
-                ("Contact Support", lambda: SimpleNameDialog("contact", "Contact Support", self).exec())
+                ("About IMS", lambda: AboutDialog(self).exec()),
+                ("Help", lambda: HelpDialog(self).exec()),
+                ("Contact Support", lambda: ContactSupportDialog(self).exec())
             ],
         }
         for title, actions in menus.items():
