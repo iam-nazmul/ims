@@ -84,5 +84,5 @@ load a full database dump.
 
 ## For developers
 
-See [CLAUDE.md](CLAUDE.md) for the architecture overview and
+See [IMS.md](IMS.md) for the architecture overview and
 [ims/README.md](ims/README.md) for the module-by-module developer guide.
