@@ -348,6 +348,209 @@ class Reports:
             [[r["entry_date"].strftime("%d %b %Y"), r["tran_no"], r["bank"], r["tran_type"],
               _f(r["amount"]), r["remarks"]] for r in rows]))
 
+    def account_ledger(self):
+        """Chronological cash-account ledger: every money-in/out entry with running balance."""
+        rng = self._range("Account Ledger")
+        if not rng:
+            return
+        entries = db().fetch_all(
+            """SELECT sales_date AS d, 'Sale ' || invoice_no AS what,
+                      paid_amount AS debit, 0 AS credit
+               FROM sales WHERE company_id = app_company_id()
+                     AND paid_amount <> 0 AND sales_date <= %s
+               UNION ALL
+               SELECT entry_date, 'Collection ' || receipt_no, amount, 0
+               FROM cash_collections
+               WHERE company_id = app_company_id() AND amount <> 0 AND entry_date <= %s
+               UNION ALL
+               SELECT income_date, 'Income: ' || description, amount, 0
+               FROM incomes WHERE company_id = app_company_id() AND income_date <= %s
+               UNION ALL
+               SELECT return_date, 'Purchase Return ' || return_no, back_amount, 0
+               FROM purchase_returns
+               WHERE company_id = app_company_id() AND back_amount <> 0 AND return_date <= %s
+               UNION ALL
+               SELECT entry_date, 'Bank Withdraw ' || tran_no, amount, 0
+               FROM bank_transactions
+               WHERE company_id = app_company_id() AND tran_type = 'Withdraw'
+                     AND entry_date <= %s
+               UNION ALL
+               SELECT purchase_date, 'Purchase ' || challan_no, 0, paid_amount
+               FROM purchases WHERE company_id = app_company_id()
+                     AND paid_amount <> 0 AND purchase_date <= %s
+               UNION ALL
+               SELECT entry_date, 'Payment ' || voucher_no, 0, amount
+               FROM cash_deliveries
+               WHERE company_id = app_company_id() AND amount <> 0 AND entry_date <= %s
+               UNION ALL
+               SELECT expense_date, 'Expense: ' || description, 0, amount
+               FROM expenses WHERE company_id = app_company_id() AND expense_date <= %s
+               UNION ALL
+               SELECT return_date, 'Sales Return ' || return_no, 0, back_amount
+               FROM sales_returns
+               WHERE company_id = app_company_id() AND back_amount <> 0 AND return_date <= %s
+               UNION ALL
+               SELECT entry_date, 'Bank Deposit ' || tran_no, 0, amount
+               FROM bank_transactions
+               WHERE company_id = app_company_id() AND tran_type = 'Deposit'
+                     AND entry_date <= %s
+               ORDER BY d""", (rng[1],) * 10)
+        balance = sum(_f(r["debit"]) - _f(r["credit"]) for r in entries if r["d"] < rng[0])
+        rows = [["", "Opening Balance", None, None, balance]]
+        debit = credit = 0.0
+        for r in entries:
+            if r["d"] < rng[0]:
+                continue
+            debit += _f(r["debit"])
+            credit += _f(r["credit"])
+            balance += _f(r["debit"]) - _f(r["credit"])
+            rows.append([r["d"].strftime("%d %b %Y"), r["what"], _f(r["debit"]),
+                         _f(r["credit"]), balance])
+        self.show(f"Account Ledger: {rng[0]:%d %b %Y} to {rng[1]:%d %b %Y}",
+                  html_table(["Date", "Particulars", "Debit", "Credit", "Balance"], rows,
+                             ["Total", "", debit, credit, balance]))
+
+    def stock_ledger(self):
+        from .widgets import PickerDialog
+        from .inventory import PRODUCT_PICK_SQL
+        rec = PickerDialog.pick(
+            "Products", ["Code", "Model", "Category", "Stock", "Pur.Rate", "Sales Rate", "MRP"],
+            PRODUCT_PICK_SQL, self.parent)
+        if not rec:
+            return
+        entries = db().fetch_all(
+            """SELECT pu.purchase_date AS d, 'Purchase ' || pu.challan_no AS what,
+                      pi.qty AS qty_in, 0 AS qty_out
+               FROM purchase_items pi JOIN purchases pu ON pu.id = pi.purchase_id
+               WHERE pu.company_id = app_company_id() AND pi.product_id = %s
+               UNION ALL
+               SELECT r.return_date, 'Sales Return ' || r.return_no, ri.qty, 0
+               FROM sale_return_items ri JOIN sales_returns r ON r.id = ri.return_id
+               WHERE r.company_id = app_company_id() AND ri.product_id = %s
+               UNION ALL
+               SELECT s.sales_date, 'Sale ' || s.invoice_no, 0, si.qty
+               FROM sale_items si JOIN sales s ON s.id = si.sale_id
+               WHERE s.company_id = app_company_id() AND si.product_id = %s
+               UNION ALL
+               SELECT r.return_date, 'Purchase Return ' || r.return_no, 0, ri.qty
+               FROM purchase_return_items ri JOIN purchase_returns r ON r.id = ri.return_id
+               WHERE r.company_id = app_company_id() AND ri.product_id = %s
+               UNION ALL
+               SELECT damage_date, 'Damage ' || damage_no, 0, qty
+               FROM damaged_products
+               WHERE company_id = app_company_id() AND product_id = %s
+               ORDER BY d""", (rec["id"],) * 5)
+        # products has no opening-stock column: derive it so the ledger closes at stock_qty
+        balance = _f(rec["stock_qty"]) - sum(_f(r["qty_in"]) - _f(r["qty_out"]) for r in entries)
+        rows = [["", "Opening Stock", None, None, balance]]
+        for r in entries:
+            balance += _f(r["qty_in"]) - _f(r["qty_out"])
+            rows.append([r["d"].strftime("%d %b %Y"), r["what"], _f(r["qty_in"]),
+                         _f(r["qty_out"]), balance])
+        self.show(f"Stock Ledger — {rec['name']}",
+                  html_table(["Date", "Particulars", "Stock In", "Stock Out", "Balance"], rows,
+                             ["Total", "", _f(sum(r["qty_in"] for r in entries)),
+                              _f(sum(r["qty_out"] for r in entries)), balance]))
+
+    def transaction_log(self):
+        """Every money transaction in range: sales, purchases, collections,
+        deliveries, returns, income and expense, with cash in/out totals."""
+        rng = self._range("Transaction Log")
+        if not rng:
+            return
+        rows = db().fetch_all(
+            """SELECT s.sales_date AS d, 'Sale' AS what, s.invoice_no AS doc,
+                      c.name AS party, s.paid_amount AS cash_in, 0 AS cash_out
+               FROM sales s JOIN customers c ON c.id = s.customer_id
+               WHERE s.company_id = app_company_id() AND s.sales_date BETWEEN %s AND %s
+               UNION ALL
+               SELECT cc.entry_date, 'Cash Collection', cc.receipt_no, c.name, cc.amount, 0
+               FROM cash_collections cc JOIN customers c ON c.id = cc.customer_id
+               WHERE cc.company_id = app_company_id() AND cc.entry_date BETWEEN %s AND %s
+               UNION ALL
+               SELECT r.return_date, 'Return Receive', r.return_no, sp.name, r.back_amount, 0
+               FROM purchase_returns r
+               JOIN purchases p ON p.id = r.purchase_id
+               JOIN suppliers sp ON sp.id = p.supplier_id
+               WHERE r.company_id = app_company_id() AND r.return_date BETWEEN %s AND %s
+               UNION ALL
+               SELECT income_date, 'Income', '', description, amount, 0
+               FROM incomes
+               WHERE company_id = app_company_id() AND income_date BETWEEN %s AND %s
+               UNION ALL
+               SELECT p.purchase_date, 'Purchase', p.challan_no, sp.name, 0, p.paid_amount
+               FROM purchases p JOIN suppliers sp ON sp.id = p.supplier_id
+               WHERE p.company_id = app_company_id() AND p.purchase_date BETWEEN %s AND %s
+               UNION ALL
+               SELECT cd.entry_date, 'Cash Delivery', cd.voucher_no, sp.name, 0, cd.amount
+               FROM cash_deliveries cd JOIN suppliers sp ON sp.id = cd.supplier_id
+               WHERE cd.company_id = app_company_id() AND cd.entry_date BETWEEN %s AND %s
+               UNION ALL
+               SELECT r.return_date, 'Return Amount', r.return_no, c.name, 0, r.back_amount
+               FROM sales_returns r
+               JOIN sales s ON s.id = r.sale_id
+               JOIN customers c ON c.id = s.customer_id
+               WHERE r.company_id = app_company_id() AND r.return_date BETWEEN %s AND %s
+               UNION ALL
+               SELECT expense_date, 'Expense', '', description, 0, amount
+               FROM expenses
+               WHERE company_id = app_company_id() AND expense_date BETWEEN %s AND %s
+               ORDER BY d, what""", rng * 8)
+        self.show(f"Transaction Log: {rng[0]:%d %b %Y} to {rng[1]:%d %b %Y}",
+                  html_table(["Date", "Type", "Doc No", "Particulars", "Received", "Paid"],
+                             [[r["d"].strftime("%d %b %Y"), r["what"], r["doc"], r["party"],
+                               _f(r["cash_in"]), _f(r["cash_out"])] for r in rows],
+                             ["Total", "", "", "", _f(sum(r["cash_in"] for r in rows)),
+                              _f(sum(r["cash_out"] for r in rows))]))
+
+    def stock_transaction_log(self):
+        """Every stock movement in range across all products."""
+        rng = self._range("Stock Transaction Log")
+        if not rng:
+            return
+        rows = db().fetch_all(
+            """SELECT pu.purchase_date AS d, 'Purchase' AS what, pu.challan_no AS doc,
+                      p.code || ' - ' || p.model_name AS product,
+                      pi.qty AS qty_in, 0 AS qty_out
+               FROM purchase_items pi
+               JOIN purchases pu ON pu.id = pi.purchase_id
+               JOIN products p ON p.id = pi.product_id
+               WHERE pu.company_id = app_company_id()
+                     AND pu.purchase_date BETWEEN %s AND %s
+               UNION ALL
+               SELECT r.return_date, 'Sales Return', r.return_no,
+                      p.code || ' - ' || p.model_name, ri.qty, 0
+               FROM sale_return_items ri
+               JOIN sales_returns r ON r.id = ri.return_id
+               JOIN products p ON p.id = ri.product_id
+               WHERE r.company_id = app_company_id() AND r.return_date BETWEEN %s AND %s
+               UNION ALL
+               SELECT s.sales_date, 'Sale', s.invoice_no,
+                      p.code || ' - ' || p.model_name, 0, si.qty
+               FROM sale_items si
+               JOIN sales s ON s.id = si.sale_id
+               JOIN products p ON p.id = si.product_id
+               WHERE s.company_id = app_company_id() AND s.sales_date BETWEEN %s AND %s
+               UNION ALL
+               SELECT r.return_date, 'Purchase Return', r.return_no,
+                      p.code || ' - ' || p.model_name, 0, ri.qty
+               FROM purchase_return_items ri
+               JOIN purchase_returns r ON r.id = ri.return_id
+               JOIN products p ON p.id = ri.product_id
+               WHERE r.company_id = app_company_id() AND r.return_date BETWEEN %s AND %s
+               UNION ALL
+               SELECT dp.damage_date, 'Damage', dp.damage_no,
+                      p.code || ' - ' || p.model_name, 0, dp.qty
+               FROM damaged_products dp JOIN products p ON p.id = dp.product_id
+               WHERE dp.company_id = app_company_id() AND dp.damage_date BETWEEN %s AND %s
+               ORDER BY d, what""", rng * 5)
+        self.show(f"Stock Transaction Log: {rng[0]:%d %b %Y} to {rng[1]:%d %b %Y}",
+                  html_table(["Date", "Type", "Doc No", "Product", "Stock In", "Stock Out"],
+                             [[r["d"].strftime("%d %b %Y"), r["what"], r["doc"], r["product"],
+                               _f(r["qty_in"]), _f(r["qty_out"])] for r in rows],
+                             ["Total", "", "", "", _f(sum(r["qty_in"] for r in rows)),
+                              _f(sum(r["qty_out"] for r in rows))]))
+
     def cash_receive_delivery(self):
         rng = self._range("Cash Receive and Delivery")
         if not rng:

@@ -135,6 +135,10 @@ class MainWindow(QMainWindow):
                 ("Contact Support", lambda: ContactSupportDialog(self).exec())
             ],
             "History": [
+                ("Account Ledger", self.open_account_ledger),
+                ("Stock Ledger", self.open_stock_ledger),
+                ("Transaction Log", lambda: Reports(self).transaction_log()),
+                ("Stock Transaction Log", lambda: Reports(self).stock_transaction_log()),
                 ("Log", self.open_history),
             ] if self.is_admin else []
         }
@@ -344,6 +348,18 @@ class MainWindow(QMainWindow):
             error(self, "Only Admin users can view Roles and Permissions.")
             return
         RolesDialog(self).exec()
+
+    def open_account_ledger(self):
+        if self.user.get("role") != "Admin":
+            error(self, "Only Admin users can view the account ledger.")
+            return
+        Reports(self).account_ledger()
+
+    def open_stock_ledger(self):
+        if self.user.get("role") != "Admin":
+            error(self, "Only Admin users can view the stock ledger.")
+            return
+        Reports(self).stock_ledger()
 
     def open_history(self):
         if self.user.get("role") != "Admin":

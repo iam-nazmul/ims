@@ -21,6 +21,11 @@ from the `ims.wmv` demo video of the original "Shahajahan Enterprise" WinForms a
   supplier dues, stock, expense & income, daily/monthly/yearly sales and purchase,
   customer/supplier/bank ledgers, benefit reports, installment reports,
   cash-in-hand, profit & loss — all with print preview.
+- **Multi-shop** — data is kept per company/shop; manage shops under Basic → Companies
+- **User Management** — accounts, roles (Admin/Manager/Supervisor/Staff) with
+  per-menu permissions, password change
+- **History** — admin-only log of every create/edit/delete
+- **Settings** — one-click database Backup / Restore
 
 ## Setup
 
@@ -46,33 +51,19 @@ Override with:
 export IMS_DATABASE_URL="dbname=ims_db user=postgres password=... host=localhost"
 ```
 
-## Project layout
+If your PostgreSQL user requires a password, set one and include it in
+`IMS_DATABASE_URL`:
 
-```
-db_schema.sql        PostgreSQL schema + seed data (re-runnable)
-ims/
-  __main__.py        entry point (python -m ims), --initdb helper
-  qt.py              PySide6/PyQt6 compatibility imports
-  db.py              connection, query helpers, transactions
-  widgets.py         shared UI: list dialogs, lookup pickers, print preview
-  login.py           LogIn dialog
-  main_window.py     dashboard, menus, colored shortcut buttons
-  basic.py           system info, companies, categories, banks, products
-  people.py          employees, customers, suppliers
-  inventory.py       purchase orders, sales orders, returns, credit sales
-  accounts.py        cash collection/delivery, bank, income, expense, investments
-  reports.py         All Report window and every report
+```bash
+sudo -u postgres psql -c "ALTER USER <your-user> WITH PASSWORD '<password>';"
 ```
 
+## Backup & Restore
 
-```
-git remote add origin git@github.com:iam-nazmul/ims.git
-git branch -M main
-git push -u origin main
-```
+Use **Settings → Backup Database / Restore Database** inside the app to save or
+load a full database dump.
 
+## For developers
 
-sudo -u postgres psql -c "ALTER USER nazmul WITH PASSWORD '123456';"
-
-
-multi -shops
+See [CLAUDE.md](CLAUDE.md) for the architecture overview and
+[ims/README.md](ims/README.md) for the module-by-module developer guide.
