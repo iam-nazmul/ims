@@ -73,3 +73,6 @@ git push -u origin main
 
 
 sudo -u postgres psql -c "ALTER USER nazmul WITH PASSWORD '123456';"
+
+
+multi -shops
