@@ -78,7 +78,7 @@ def confirm(parent, msg: str) -> bool:
 
 
 class SearchBar(QWidget):
-    """'Enter text to search...' + Find + Clear, like every list form in the video."""
+    """'Enter text to search...' + Find + Clear; also searches live while typing."""
     searched = Signal(str)
 
     def __init__(self, parent=None):
@@ -88,6 +88,11 @@ class SearchBar(QWidget):
         self.edit = QLineEdit()
         self.edit.setPlaceholderText("Enter text to search...")
         self.edit.returnPressed.connect(self._find)
+        self._typing = QTimer(self)
+        self._typing.setSingleShot(True)
+        self._typing.setInterval(250)
+        self._typing.timeout.connect(self._find)
+        self.edit.textChanged.connect(self._typing.start)
         find = QPushButton("Find")
         find.clicked.connect(self._find)
         clear = QPushButton("Clear")
@@ -97,11 +102,12 @@ class SearchBar(QWidget):
         lay.addWidget(clear)
 
     def _find(self):
+        self._typing.stop()
         self.searched.emit(self.edit.text().strip())
 
     def _clear(self):
         self.edit.clear()
-        self.searched.emit("")
+        self._find()
 
 
 class DataTable(QTableWidget):
@@ -339,12 +345,13 @@ class LookupField(QWidget):
 # Reporting helpers
 
 def company_header_html() -> str:
-    si = db().fetch_one("SELECT * FROM system_info WHERE id = 1") or {}
+    from .db import current_company
+    c = current_company() or {}
     return (
         f"<div style='text-align:center'>"
-        f"<h1 style='margin:0'>{si.get('company_name', '')}</h1>"
-        f"<p style='margin:2px'>{si.get('company_address', '')}<br>"
-        f"<b>Mobile: {si.get('telephone_no', '')}</b></p></div><hr>"
+        f"<h1 style='margin:0'>{c.get('name', '')}</h1>"
+        f"<p style='margin:2px'>{c.get('address', '')}<br>"
+        f"<b>Mobile: {c.get('telephone_no', '')}</b></p></div><hr>"
     )
 
 

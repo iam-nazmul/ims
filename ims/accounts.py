@@ -33,7 +33,8 @@ class CashCollectionForm(QDialog):
         self.pay_type.addItems(["Cash", "Check", "Mobile Bank"])
         self.bank = QComboBox()
         self.bank.addItem("", None)
-        for b in db().fetch_all("SELECT id, name FROM banks ORDER BY name"):
+        for b in db().fetch_all(
+                "SELECT id, name FROM banks WHERE company_id = app_company_id() ORDER BY name"):
             self.bank.addItem(b["name"], b["id"])
         self.check_no = QLineEdit()
         self.issue_date = dedit()
@@ -123,7 +124,8 @@ class CashCollectionsDialog(ListDialog):
             """SELECT cc.id, cc.entry_date, cc.receipt_no, c.name, c.contact_no,
                       cc.pay_type, cc.amount, cc.adjustment
                FROM cash_collections cc JOIN customers c ON c.id = cc.customer_id
-               WHERE c.name ILIKE %s OR cc.receipt_no ILIKE %s
+               WHERE cc.company_id = app_company_id()
+                     AND (c.name ILIKE %s OR cc.receipt_no ILIKE %s)
                ORDER BY cc.entry_date DESC, cc.id DESC""", (f"%{search}%",) * 2)
         return [(r["id"], r["entry_date"].strftime("%d %b %Y"), r["receipt_no"], r["name"],
                  r["contact_no"], r["pay_type"], money(r["amount"]), money(r["adjustment"]))
@@ -133,7 +135,7 @@ class CashCollectionsDialog(ListDialog):
         return bool(CashCollectionForm(rec_id, self).exec())
 
     def delete_sql(self):
-        return "DELETE FROM cash_collections WHERE id = %s"
+        return "DELETE FROM cash_collections WHERE id = %s AND company_id = app_company_id()"
 
 
 class CashDeliveryForm(QDialog):
@@ -157,7 +159,8 @@ class CashDeliveryForm(QDialog):
         self.pay_type = QComboBox(); self.pay_type.addItems(["Cash", "Check", "Mobile Bank"])
         self.bank = QComboBox()
         self.bank.addItem("", None)
-        for b in db().fetch_all("SELECT id, name FROM banks ORDER BY name"):
+        for b in db().fetch_all(
+                "SELECT id, name FROM banks WHERE company_id = app_company_id() ORDER BY name"):
             self.bank.addItem(b["name"], b["id"])
         self.account_no = QLineEdit()
         self.total_due = dspin(read_only=True)
@@ -221,7 +224,8 @@ class CashDeliveriesDialog(ListDialog):
         rows = db().fetch_all(
             """SELECT cd.id, cd.entry_date, s.name, s.contact_no, cd.pay_type, cd.amount
                FROM cash_deliveries cd JOIN suppliers s ON s.id = cd.supplier_id
-               WHERE s.name ILIKE %s OR cd.voucher_no ILIKE %s
+               WHERE cd.company_id = app_company_id()
+                     AND (s.name ILIKE %s OR cd.voucher_no ILIKE %s)
                ORDER BY cd.entry_date DESC, cd.id DESC""", (f"%{search}%",) * 2)
         return [(r["id"], r["entry_date"].strftime("%d %b %Y"), r["name"], r["contact_no"],
                  r["pay_type"], money(r["amount"]), "Cash Delivery") for r in rows]
@@ -230,7 +234,7 @@ class CashDeliveriesDialog(ListDialog):
         return bool(CashDeliveryForm(rec_id, self).exec())
 
     def delete_sql(self):
-        return "DELETE FROM cash_deliveries WHERE id = %s"
+        return "DELETE FROM cash_deliveries WHERE id = %s AND company_id = app_company_id()"
 
 
 class BankTransactionForm(QDialog):
@@ -246,7 +250,8 @@ class BankTransactionForm(QDialog):
         self.tran_no.setReadOnly(True)
         self.tran_type = QComboBox(); self.tran_type.addItems(["Deposit", "Withdraw"])
         self.bank = QComboBox()
-        for b in db().fetch_all("SELECT id, name FROM banks ORDER BY name"):
+        for b in db().fetch_all(
+                "SELECT id, name FROM banks WHERE company_id = app_company_id() ORDER BY name"):
             self.bank.addItem(b["name"], b["id"])
         self.amount = dspin()
         self.check_no = QLineEdit()
@@ -301,7 +306,8 @@ class BankTransactionsDialog(ListDialog):
             """SELECT t.id, t.entry_date, t.tran_no, t.tran_type, b.name AS bank, t.amount,
                       t.check_no, t.remarks
                FROM bank_transactions t LEFT JOIN banks b ON b.id = t.bank_id
-               WHERE t.tran_no ILIKE %s OR b.name ILIKE %s
+               WHERE t.company_id = app_company_id()
+                     AND (t.tran_no ILIKE %s OR b.name ILIKE %s)
                ORDER BY t.entry_date DESC, t.id DESC""", (f"%{search}%",) * 2)
         return [(r["id"], r["entry_date"].strftime("%d %b %Y"), r["tran_no"], r["tran_type"],
                  r["bank"], money(r["amount"]), r["check_no"], r["remarks"]) for r in rows]
@@ -310,7 +316,7 @@ class BankTransactionsDialog(ListDialog):
         return bool(BankTransactionForm(rec_id, self).exec())
 
     def delete_sql(self):
-        return "DELETE FROM bank_transactions WHERE id = %s"
+        return "DELETE FROM bank_transactions WHERE id = %s AND company_id = app_company_id()"
 
 
 class MoneyEntryForm(QDialog):
@@ -368,7 +374,8 @@ class MoneyListDialog(ListDialog):
     def load_rows(self, search):
         rows = db().fetch_all(
             f"""SELECT id, {self._date_col} AS d, description, amount FROM {self._table}
-                WHERE description ILIKE %s ORDER BY d DESC, id DESC""", (f"%{search}%",))
+                WHERE company_id = app_company_id() AND description ILIKE %s
+                ORDER BY d DESC, id DESC""", (f"%{search}%",))
         return [(r["id"], r["d"].strftime("%d %b %Y"), r["description"], money(r["amount"]))
                 for r in rows]
 
@@ -376,7 +383,7 @@ class MoneyListDialog(ListDialog):
         return bool(MoneyEntryForm(self._table, self._date_col, self._label, rec_id, self).exec())
 
     def delete_sql(self):
-        return f"DELETE FROM {self._table} WHERE id = %s"
+        return f"DELETE FROM {self._table} WHERE id = %s AND company_id = app_company_id()"
 
 
 class InvestmentHeadForm(QDialog):
@@ -457,7 +464,8 @@ class InvestmentHeadsDialog(QDialog):
 
     def reload(self):
         rows = db().fetch_all(
-            "SELECT id, code, name FROM investment_heads WHERE head_type = %s ORDER BY code",
+            """SELECT id, code, name FROM investment_heads
+               WHERE company_id = app_company_id() AND head_type = %s ORDER BY code""",
             (self._kind(),))
         self.tables[self._kind()].set_rows([(r["id"], r["code"], r["name"]) for r in rows])
         self.total_lbl.setText(f"Total : {len(rows)}")
@@ -480,7 +488,9 @@ class InvestmentHeadsDialog(QDialog):
             info(self, "Select a record first.")
             return
         try:
-            db().execute("DELETE FROM investment_heads WHERE id = %s", (rec_id,))
+            db().execute(
+                "DELETE FROM investment_heads WHERE id = %s AND company_id = app_company_id()",
+                (rec_id,))
         except Exception as exc:
             db().conn.rollback()
             error(self, f"Cannot delete:\n{exc}")
@@ -500,7 +510,8 @@ class InvestmentForm(QDialog):
         head_type = "LIABILITY" if inv_type.startswith("LIAB") else inv_type
         self.head = QComboBox()
         for h in db().fetch_all(
-                "SELECT id, name FROM investment_heads WHERE head_type = %s ORDER BY code",
+                """SELECT id, name FROM investment_heads
+                   WHERE company_id = app_company_id() AND head_type = %s ORDER BY code""",
                 (head_type,)):
             self.head.addItem(h["name"], h["id"])
         self.purpose = QLineEdit()
@@ -581,7 +592,8 @@ class InvestmentsDialog(QDialog):
         rows = db().fetch_all(
             """SELECT i.id, i.entry_date, h.name AS head, i.purpose, i.amount
                FROM investments i JOIN investment_heads h ON h.id = i.head_id
-               WHERE i.inv_type = %s ORDER BY i.entry_date, i.id""", (self._kind(),))
+               WHERE i.company_id = app_company_id() AND i.inv_type = %s
+               ORDER BY i.entry_date, i.id""", (self._kind(),))
         self.tables[self._kind()].set_rows(
             [(r["id"], r["entry_date"].strftime("%d %b %Y"), r["head"], r["purpose"],
               money(r["amount"])) for r in rows])
@@ -605,5 +617,6 @@ class InvestmentsDialog(QDialog):
         if rec_id is None:
             info(self, "Select a record first.")
             return
-        db().execute("DELETE FROM investments WHERE id = %s", (rec_id,))
+        db().execute("DELETE FROM investments WHERE id = %s AND company_id = app_company_id()",
+                     (rec_id,))
         self.reload()

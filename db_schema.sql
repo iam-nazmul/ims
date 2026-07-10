@@ -1,5 +1,11 @@
 -- PostgreSQL schema for the IMS desktop application (Shahajahan Enterprise clone).
 -- Re-runnable: drops and recreates everything.
+--
+-- Multi-company: every business table carries company_id -> companies(id).
+-- The app runs  SET app.company_id = <id>  once per session; app_company_id()
+-- reads it back. Every query filters on it explicitly, column DEFAULTs stamp
+-- it on INSERT, and row-level security enforces it as a backstop for
+-- non-superuser roles (superusers always bypass RLS).
 
 DROP VIEW IF EXISTS customer_dues, supplier_dues, product_stock CASCADE;
 DROP TABLE IF EXISTS
@@ -9,9 +15,18 @@ DROP TABLE IF EXISTS
     cash_collections, cash_deliveries, bank_transactions,
     investments, investment_heads, incomes, expenses,
     employees, customers, suppliers, products,
-    card_types, banks, categories, companies, system_info, role_permissions, users,
-    sales_orders, purchase_orders, cash_collections_old, income
+    card_types, banks, categories, brands, companies, system_info,
+    role_permissions, users,
+    sales_orders, purchase_orders, cash_collections_old, income,
+    audit_log
     CASCADE;
+DROP FUNCTION IF EXISTS app_company_id() CASCADE;
+DROP FUNCTION IF EXISTS log_audit() CASCADE;
+
+-- The company (shop) selected for this database session.
+CREATE FUNCTION app_company_id() RETURNS integer
+    LANGUAGE sql STABLE AS
+$$ SELECT NULLIF(current_setting('app.company_id', true), '')::integer $$;
 
 CREATE TABLE users (
     id SERIAL PRIMARY KEY,
@@ -31,44 +46,60 @@ CREATE TABLE role_permissions (
     PRIMARY KEY (role, menu_key)
 );
 
-CREATE TABLE system_info (
-    id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
-    company_name VARCHAR(200) NOT NULL DEFAULT '',
-    company_address TEXT DEFAULT '',
+-- Companies (shops). One row per shop; all business data hangs off one of these.
+CREATE TABLE companies (
+    id SERIAL PRIMARY KEY,
+    code VARCHAR(20) NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    address TEXT DEFAULT '',
     telephone_no VARCHAR(100) DEFAULT '',
     email_address VARCHAR(100) DEFAULT '',
     web_address VARCHAR(100) DEFAULT '',
-    system_start_date DATE DEFAULT CURRENT_DATE
+    start_date DATE DEFAULT CURRENT_DATE,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE
 );
 
-CREATE TABLE companies (
+-- Global settings: which company the application opens with.
+CREATE TABLE system_info (
+    id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    default_company_id INTEGER REFERENCES companies(id)
+);
+
+-- Product brands / manufacturers (UNITECH, WALTON, ...). Was called
+-- "companies" before multi-company support.
+CREATE TABLE brands (
     id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL DEFAULT app_company_id() REFERENCES companies(id),
     code VARCHAR(20) NOT NULL,
     name VARCHAR(200) NOT NULL
 );
 
 CREATE TABLE categories (
     id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL DEFAULT app_company_id() REFERENCES companies(id),
     code VARCHAR(20) NOT NULL,
     name VARCHAR(200) NOT NULL
 );
 
 CREATE TABLE banks (
     id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL DEFAULT app_company_id() REFERENCES companies(id),
     code VARCHAR(20) NOT NULL,
     name VARCHAR(200) NOT NULL
 );
 
 CREATE TABLE card_types (
     id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL DEFAULT app_company_id() REFERENCES companies(id),
     code VARCHAR(20) NOT NULL,
     name VARCHAR(200) NOT NULL
 );
 
 CREATE TABLE products (
     id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL DEFAULT app_company_id() REFERENCES companies(id),
     code VARCHAR(20) NOT NULL,
-    company_id INTEGER REFERENCES companies(id),
+    brand_id INTEGER REFERENCES brands(id),
     category_id INTEGER REFERENCES categories(id),
     product_type VARCHAR(20) DEFAULT 'NoBarCode',   -- NoBarCode | BarCode
     model_name VARCHAR(200) NOT NULL,
@@ -87,6 +118,7 @@ CREATE TABLE products (
 
 CREATE TABLE employees (
     id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL DEFAULT app_company_id() REFERENCES companies(id),
     code VARCHAR(20) NOT NULL,
     name VARCHAR(200) NOT NULL,
     father_name VARCHAR(200) DEFAULT '',
@@ -107,6 +139,7 @@ ALTER TABLE users ADD CONSTRAINT users_employee_id_fkey
 
 CREATE TABLE customers (
     id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL DEFAULT app_company_id() REFERENCES companies(id),
     code VARCHAR(20) NOT NULL,
     name VARCHAR(200) NOT NULL,
     contact_no VARCHAR(50) DEFAULT '',
@@ -117,6 +150,7 @@ CREATE TABLE customers (
 
 CREATE TABLE suppliers (
     id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL DEFAULT app_company_id() REFERENCES companies(id),
     code VARCHAR(20) NOT NULL,
     name VARCHAR(200) NOT NULL,
     contact_person VARCHAR(200) DEFAULT '',
@@ -127,6 +161,7 @@ CREATE TABLE suppliers (
 
 CREATE TABLE purchases (
     id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL DEFAULT app_company_id() REFERENCES companies(id),
     purchase_date DATE NOT NULL DEFAULT CURRENT_DATE,
     challan_no VARCHAR(50) DEFAULT '',
     supplier_id INTEGER NOT NULL REFERENCES suppliers(id),
@@ -150,7 +185,8 @@ CREATE TABLE purchase_items (
 
 CREATE TABLE sales (
     id SERIAL PRIMARY KEY,
-    invoice_no VARCHAR(30) UNIQUE NOT NULL,
+    company_id INTEGER NOT NULL DEFAULT app_company_id() REFERENCES companies(id),
+    invoice_no VARCHAR(30) NOT NULL,
     sales_date DATE NOT NULL DEFAULT CURRENT_DATE,
     customer_id INTEGER NOT NULL REFERENCES customers(id),
     sale_kind VARCHAR(10) NOT NULL DEFAULT 'CASH',   -- CASH | CREDIT
@@ -164,7 +200,8 @@ CREATE TABLE sales (
     interest_rate NUMERIC(7,2) DEFAULT 0,
     interest_amount NUMERIC(14,2) DEFAULT 0,
     remind_date DATE,
-    sold_by VARCHAR(50) DEFAULT ''
+    sold_by VARCHAR(50) DEFAULT '',
+    UNIQUE (company_id, invoice_no)
 );
 
 CREATE TABLE sale_items (
@@ -189,6 +226,7 @@ CREATE TABLE installments (
 
 CREATE TABLE sales_returns (
     id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL DEFAULT app_company_id() REFERENCES companies(id),
     return_no VARCHAR(30) NOT NULL,
     return_date DATE NOT NULL DEFAULT CURRENT_DATE,
     sale_id INTEGER NOT NULL REFERENCES sales(id),
@@ -207,6 +245,7 @@ CREATE TABLE sale_return_items (
 
 CREATE TABLE purchase_returns (
     id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL DEFAULT app_company_id() REFERENCES companies(id),
     return_no VARCHAR(30) NOT NULL,
     return_date DATE NOT NULL DEFAULT CURRENT_DATE,
     purchase_id INTEGER NOT NULL REFERENCES purchases(id),
@@ -225,6 +264,7 @@ CREATE TABLE purchase_return_items (
 
 CREATE TABLE damaged_products (
     id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL DEFAULT app_company_id() REFERENCES companies(id),
     damage_no VARCHAR(30) NOT NULL,
     damage_date DATE NOT NULL DEFAULT CURRENT_DATE,
     product_id INTEGER NOT NULL REFERENCES products(id),
@@ -236,6 +276,7 @@ CREATE TABLE damaged_products (
 
 CREATE TABLE cash_collections (
     id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL DEFAULT app_company_id() REFERENCES companies(id),
     entry_date DATE NOT NULL DEFAULT CURRENT_DATE,
     receipt_no VARCHAR(30) DEFAULT '',
     customer_id INTEGER NOT NULL REFERENCES customers(id),
@@ -253,6 +294,7 @@ CREATE TABLE cash_collections (
 
 CREATE TABLE cash_deliveries (
     id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL DEFAULT app_company_id() REFERENCES companies(id),
     entry_date DATE NOT NULL DEFAULT CURRENT_DATE,
     voucher_no VARCHAR(30) DEFAULT '',
     supplier_id INTEGER NOT NULL REFERENCES suppliers(id),
@@ -265,6 +307,7 @@ CREATE TABLE cash_deliveries (
 
 CREATE TABLE bank_transactions (
     id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL DEFAULT app_company_id() REFERENCES companies(id),
     entry_date DATE NOT NULL DEFAULT CURRENT_DATE,
     tran_no VARCHAR(30) DEFAULT '',
     tran_type VARCHAR(20) DEFAULT 'Deposit',         -- Deposit | Withdraw
@@ -276,6 +319,7 @@ CREATE TABLE bank_transactions (
 
 CREATE TABLE investment_heads (
     id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL DEFAULT app_company_id() REFERENCES companies(id),
     code VARCHAR(20) NOT NULL,
     name VARCHAR(200) NOT NULL,
     head_type VARCHAR(20) NOT NULL DEFAULT 'FIXED'   -- FIXED | CURRENT | LIABILITY
@@ -283,6 +327,7 @@ CREATE TABLE investment_heads (
 
 CREATE TABLE investments (
     id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL DEFAULT app_company_id() REFERENCES companies(id),
     entry_date DATE NOT NULL DEFAULT CURRENT_DATE,
     head_id INTEGER NOT NULL REFERENCES investment_heads(id),
     purpose VARCHAR(200) DEFAULT '',
@@ -292,6 +337,7 @@ CREATE TABLE investments (
 
 CREATE TABLE incomes (
     id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL DEFAULT app_company_id() REFERENCES companies(id),
     income_date DATE NOT NULL DEFAULT CURRENT_DATE,
     description TEXT DEFAULT '',
     amount NUMERIC(14,2) DEFAULT 0
@@ -299,15 +345,41 @@ CREATE TABLE incomes (
 
 CREATE TABLE expenses (
     id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL DEFAULT app_company_id() REFERENCES companies(id),
     expense_date DATE NOT NULL DEFAULT CURRENT_DATE,
     description TEXT DEFAULT '',
     amount NUMERIC(14,2) DEFAULT 0
 );
 
+-- Row-level security backstop -------------------------------------------
+-- Applies to non-superuser roles (owners included, via FORCE). The app also
+-- filters explicitly in SQL, so a superuser connection is still isolated.
+
+DO $$
+DECLARE t text;
+BEGIN
+    FOREACH t IN ARRAY ARRAY[
+        'brands', 'categories', 'banks', 'card_types', 'products', 'employees',
+        'customers', 'suppliers', 'purchases', 'sales', 'sales_returns',
+        'purchase_returns', 'damaged_products', 'cash_collections',
+        'cash_deliveries', 'bank_transactions', 'investment_heads',
+        'investments', 'incomes', 'expenses']
+    LOOP
+        EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+        EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
+        EXECUTE format(
+            'CREATE POLICY company_isolation ON %I
+                 USING (company_id = app_company_id())
+                 WITH CHECK (company_id = app_company_id())', t);
+        EXECUTE format('CREATE INDEX %I ON %I (company_id)', t || '_company_idx', t);
+    END LOOP;
+END $$;
+
 -- Dues -------------------------------------------------------------------
 
-CREATE VIEW customer_dues AS
+CREATE VIEW customer_dues WITH (security_invoker = true) AS
 SELECT c.id,
+       c.company_id,
        c.opening_due
        + COALESCE((SELECT SUM(s.net_total - s.paid_amount) FROM sales s
                    WHERE s.customer_id = c.id), 0)
@@ -318,8 +390,9 @@ SELECT c.id,
                    WHERE s2.customer_id = c.id), 0) AS total_due
 FROM customers c;
 
-CREATE VIEW supplier_dues AS
+CREATE VIEW supplier_dues WITH (security_invoker = true) AS
 SELECT sp.id,
+       sp.company_id,
        sp.opening_due
        + COALESCE((SELECT SUM(p.net_total - p.paid_amount) FROM purchases p
                    WHERE p.supplier_id = sp.id), 0)
@@ -346,10 +419,17 @@ INSERT INTO role_permissions (role, menu_key) VALUES
 ('Supervisor', 'Account Management'), ('Supervisor', 'MIS Report'),
 ('Staff', 'Customer and Supplier'), ('Staff', 'Inventory Management');
 
-INSERT INTO system_info (id, company_name, company_address, telephone_no, email_address, web_address, system_start_date)
-VALUES (1, 'Shahajahan Enterprise', 'Kesorhat, Mohanpur, Rajshahi', '+8801761777748', '', '', '2018-12-01');
+INSERT INTO companies (code, name, address, telephone_no, start_date)
+VALUES ('00001', 'Shahajahan Enterprise', 'Kesorhat, Mohanpur, Rajshahi',
+        '+8801761777748', '2018-12-01');
 
-INSERT INTO companies (code, name) VALUES
+INSERT INTO system_info (id, default_company_id) VALUES (1, 1);
+
+-- All remaining seed rows belong to company 1: stamp them via the session var
+-- the same way the running application does.
+SET app.company_id = '1';
+
+INSERT INTO brands (code, name) VALUES
 ('00001', 'UNITECH'), ('00002', 'MINISTER'), ('00003', 'VIGO'),
 ('00004', 'WALTON'), ('00005', 'EURO STAR'), ('00006', 'KIAM'), ('00007', 'SHORIF');
 
@@ -367,7 +447,7 @@ INSERT INTO banks (code, name) VALUES
 INSERT INTO card_types (code, name) VALUES
 ('00001', 'Visa'), ('00002', 'Master Card'), ('00003', 'DBBL Nexus');
 
-INSERT INTO products (code, company_id, category_id, model_name, warning_qty,
+INSERT INTO products (code, brand_id, category_id, model_name, warning_qty,
                       purchase_rate, sales_rate, mrp_rate, stock_qty) VALUES
 ('000001', 1, 2, 'UPBLR-248L',  2, 25714.00, 30000.00, 34000.00, 1),
 ('000002', 1, 2, 'UPBLR-220L',  2, 22000.00, 26000.00, 28000.00, 15),
@@ -444,3 +524,66 @@ INSERT INTO incomes (income_date, description, amount) VALUES
 INSERT INTO expenses (expense_date, description, amount) VALUES
 (CURRENT_DATE - 7, 'Office expense',   500.00),
 (CURRENT_DATE - 1, 'Electricity bill', 1200.00);
+
+-- Audit trail --------------------------------------------------------------
+-- Every INSERT/UPDATE/DELETE on every table is recorded in audit_log via
+-- row-level triggers, tagged with the logged-in user (SET app.username,
+-- published at login like app.company_id). Created after the seed data so
+-- initial rows are not logged. Viewing is Admin-only, enforced in the app.
+
+CREATE TABLE audit_log (
+    id BIGSERIAL PRIMARY KEY,
+    logged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    username VARCHAR(50) NOT NULL DEFAULT '',
+    company_id INTEGER,
+    table_name VARCHAR(63) NOT NULL,
+    operation VARCHAR(6) NOT NULL,          -- INSERT | UPDATE | DELETE
+    record_id BIGINT,
+    old_data JSONB,                          -- row before (UPDATE/DELETE)
+    new_data JSONB                           -- row after  (INSERT/UPDATE)
+);
+
+CREATE INDEX audit_log_logged_at_idx ON audit_log (logged_at DESC);
+CREATE INDEX audit_log_table_idx ON audit_log (table_name);
+
+CREATE FUNCTION log_audit() RETURNS trigger
+    LANGUAGE plpgsql AS
+$$
+DECLARE
+    old_row JSONB;
+    new_row JSONB;
+BEGIN
+    -- Skip UPDATEs that change nothing.
+    IF TG_OP = 'UPDATE' AND OLD IS NOT DISTINCT FROM NEW THEN
+        RETURN NEW;
+    END IF;
+    IF TG_OP <> 'INSERT' THEN
+        old_row := to_jsonb(OLD) - 'password_hash';   -- never log password hashes
+    END IF;
+    IF TG_OP <> 'DELETE' THEN
+        new_row := to_jsonb(NEW) - 'password_hash';
+    END IF;
+    INSERT INTO audit_log (username, company_id, table_name, operation,
+                           record_id, old_data, new_data)
+    VALUES (COALESCE(current_setting('app.username', true), ''),
+            COALESCE((new_row ->> 'company_id')::integer,
+                     (old_row ->> 'company_id')::integer,
+                     app_company_id()),
+            TG_TABLE_NAME, TG_OP,
+            COALESCE(new_row ->> 'id', old_row ->> 'id')::bigint,
+            old_row, new_row);
+    RETURN COALESCE(NEW, OLD);
+END
+$$;
+
+DO $$
+DECLARE t text;
+BEGIN
+    FOR t IN SELECT tablename FROM pg_tables
+             WHERE schemaname = 'public' AND tablename <> 'audit_log'
+    LOOP
+        EXECUTE format('CREATE TRIGGER audit_trg
+                            AFTER INSERT OR UPDATE OR DELETE ON %I
+                            FOR EACH ROW EXECUTE FUNCTION log_audit()', t);
+    END LOOP;
+END $$;

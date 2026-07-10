@@ -91,7 +91,9 @@ class EmployeesDialog(ListDialog):
     def load_rows(self, search):
         rows = db().fetch_all(
             """SELECT id, code, name, contact_no, designation, joining_date, gross_salary
-               FROM employees WHERE code ILIKE %s OR name ILIKE %s OR designation ILIKE %s
+               FROM employees
+               WHERE company_id = app_company_id()
+                     AND (code ILIKE %s OR name ILIKE %s OR designation ILIKE %s)
                ORDER BY code""", (f"%{search}%",) * 3)
         return [(r["id"], r["code"], r["name"], r["contact_no"], r["designation"],
                  r["joining_date"].strftime("%d %b %Y"), money(r["gross_salary"])) for r in rows]
@@ -100,7 +102,7 @@ class EmployeesDialog(ListDialog):
         return bool(EmployeeForm(rec_id, self).exec())
 
     def delete_sql(self):
-        return "DELETE FROM employees WHERE id = %s"
+        return "DELETE FROM employees WHERE id = %s AND company_id = app_company_id()"
 
 
 class CustomerForm(QDialog):
@@ -166,7 +168,8 @@ class CustomersDialog(ListDialog):
         rows = db().fetch_all(
             """SELECT c.id, c.code, c.name, c.address, c.contact_no, d.total_due
                FROM customers c JOIN customer_dues d ON d.id = c.id
-               WHERE c.code ILIKE %s OR c.name ILIKE %s OR c.contact_no ILIKE %s
+               WHERE c.company_id = app_company_id()
+                     AND (c.code ILIKE %s OR c.name ILIKE %s OR c.contact_no ILIKE %s)
                ORDER BY c.name""", (f"%{search}%",) * 3)
         return [(r["id"], r["code"], r["name"], r["address"], r["contact_no"],
                  money(r["total_due"])) for r in rows]
@@ -175,7 +178,7 @@ class CustomersDialog(ListDialog):
         return bool(CustomerForm(rec_id, self).exec())
 
     def delete_sql(self):
-        return "DELETE FROM customers WHERE id = %s"
+        return "DELETE FROM customers WHERE id = %s AND company_id = app_company_id()"
 
 
 class SupplierForm(QDialog):
@@ -240,7 +243,8 @@ class SuppliersDialog(ListDialog):
         rows = db().fetch_all(
             """SELECT s.id, s.code, s.name, s.contact_no, d.total_due
                FROM suppliers s JOIN supplier_dues d ON d.id = s.id
-               WHERE s.code ILIKE %s OR s.name ILIKE %s OR s.contact_no ILIKE %s
+               WHERE s.company_id = app_company_id()
+                     AND (s.code ILIKE %s OR s.name ILIKE %s OR s.contact_no ILIKE %s)
                ORDER BY s.code""", (f"%{search}%",) * 3)
         return [(r["id"], r["code"], r["name"], r["contact_no"], money(r["total_due"]))
                 for r in rows]
@@ -249,4 +253,4 @@ class SuppliersDialog(ListDialog):
         return bool(SupplierForm(rec_id, self).exec())
 
     def delete_sql(self):
-        return "DELETE FROM suppliers WHERE id = %s"
+        return "DELETE FROM suppliers WHERE id = %s AND company_id = app_company_id()"

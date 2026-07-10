@@ -114,13 +114,14 @@ class AboutDialog(QDialog):
         title.setWordWrap(True)
         lay.addWidget(title)
 
-        si = db().fetch_one("SELECT * FROM system_info WHERE id = 1") or {}
+        from .db import current_company
+        c = current_company() or {}
         lines = [
-            f"<b>{si.get('company_name', '')}</b>" if si.get("company_name") else "",
-            si.get("company_address", "") or "",
-            f"Phone: {si['telephone_no']}" if si.get("telephone_no") else "",
-            f"Email: {si['email_address']}" if si.get("email_address") else "",
-            f"Web: {si['web_address']}" if si.get("web_address") else "",
+            f"<b>{c.get('name', '')}</b>" if c.get("name") else "",
+            c.get("address", "") or "",
+            f"Phone: {c['telephone_no']}" if c.get("telephone_no") else "",
+            f"Email: {c['email_address']}" if c.get("email_address") else "",
+            f"Web: {c['web_address']}" if c.get("web_address") else "",
         ]
         info = QLabel("<br>".join(line for line in lines if line))
         info.setWordWrap(True)
