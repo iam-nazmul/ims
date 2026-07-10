@@ -27,6 +27,7 @@ COMPANY_SCOPED_TABLES = {
 }
 
 _company_id: int | None = None
+_username: str | None = None
 
 
 class Database:
@@ -35,12 +36,24 @@ class Database:
         self.conn = psycopg2.connect(self.dsn, cursor_factory=RealDictCursor)
         if _company_id is not None:
             self.apply_company(_company_id)
+        if _username is not None:
+            self.apply_user(_username)
 
     def apply_company(self, company_id: int):
         """Publish the selected company to the DB session (app.company_id)."""
         with self.conn.cursor() as cur:
             cur.execute("SELECT set_config('app.company_id', %s, false)",
                         (str(company_id),))
+        self.conn.commit()
+
+    def apply_user(self, username: str):
+        """Publish the logged-in user to the DB session (app.username).
+
+        The audit triggers read it back to stamp every insert/update/delete.
+        """
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT set_config('app.username', %s, false)",
+                        (username,))
         self.conn.commit()
 
     def fetch_all(self, sql: str, params: tuple = ()) -> list[dict]:
@@ -120,6 +133,14 @@ def set_current_company(company_id: int):
     _company_id = int(company_id)
     if _db is not None:
         _db.apply_company(_company_id)
+
+
+def set_current_user(username: str):
+    """Record who is logged in; audit triggers stamp this on every change."""
+    global _username
+    _username = username
+    if _db is not None:
+        _db.apply_user(_username)
 
 
 def current_company_id() -> int | None:

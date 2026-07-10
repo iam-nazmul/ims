@@ -17,6 +17,7 @@ from .inventory import (PurchaseOrdersDialog, SalesOrdersDialog, CreditSalesDial
 from .accounts import (CashCollectionsDialog, CashDeliveriesDialog, BankTransactionsDialog,
                        MoneyListDialog, InvestmentHeadsDialog, InvestmentsDialog)
 from .reports import AllReportDialog, Reports
+from .history import HistoryDialog
 
 NAV_BUTTONS = [
     ("Product\nConfiguration", "#ffffff", "#1c3f92", "Inventory Management"),
@@ -133,6 +134,9 @@ class MainWindow(QMainWindow):
                 ("Help", lambda: HelpDialog(self).exec()),
                 ("Contact Support", lambda: ContactSupportDialog(self).exec())
             ],
+            "History": [
+                ("Log", self.open_history),
+            ] if self.is_admin else []
         }
         for title, actions in menus.items():
             if not actions:
@@ -340,6 +344,12 @@ class MainWindow(QMainWindow):
             error(self, "Only Admin users can view Roles and Permissions.")
             return
         RolesDialog(self).exec()
+
+    def open_history(self):
+        if self.user.get("role") != "Admin":
+            error(self, "Only Admin users can view the activity log.")
+            return
+        HistoryDialog(self).exec()
 
     def open_restore_database(self):
         if self.user.get("role") != "Admin":
