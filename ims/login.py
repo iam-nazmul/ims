@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 
 from .qt import *
-from .db import db
+from .db import db, set_current_user
 from .widgets import DIALOG_QSS, error
 
 
@@ -50,4 +50,5 @@ class LoginDialog(QDialog):
             error(self, "This account has been disabled. Contact an administrator.")
             return
         self.user = user
+        set_current_user(user["username"])
         self.accept()
