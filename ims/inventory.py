@@ -114,8 +114,12 @@ class PurchaseOrderForm(QDialog):
         self.pur_rate = dspin()
         self.dis_pct = dspin(100, 2)
         self.line_total = dspin(read_only=True)
-        for w in (self.qty, self.pur_rate, self.dis_pct):
+        self._syncing = False
+        for w in (self.qty, self.pur_rate):
             w.valueChanged.connect(self._recalc_line)
+        for w in (self.mrp, self.pur_rate):
+            w.valueChanged.connect(self._recalc_dis)
+        self.dis_pct.valueChanged.connect(self._recalc_rate)
         add = QPushButton("Add"); add.clicked.connect(self._add_item)
         remove = QPushButton("Remove"); remove.clicked.connect(self._remove_item)
         pgrid.addWidget(QLabel("Product"), 0, 0); pgrid.addWidget(self.product, 0, 1, 1, 3)
@@ -169,9 +173,26 @@ class PurchaseOrderForm(QDialog):
         self.qty.setValue(1)
         self._recalc_line()
 
+    def _recalc_dis(self):
+        if self._syncing:
+            return
+        self._syncing = True
+        mrp = self.mrp.value()
+        if mrp > 0:
+            self.dis_pct.setValue((mrp - self.pur_rate.value()) / mrp * 100)
+        else:
+            self.dis_pct.setValue(0)
+        self._syncing = False
+
+    def _recalc_rate(self):
+        if self._syncing:
+            return
+        self._syncing = True
+        self.pur_rate.setValue(self.mrp.value() * (1 - self.dis_pct.value() / 100))
+        self._syncing = False
+
     def _recalc_line(self):
-        base = self.qty.value() * self.pur_rate.value()
-        self.line_total.setValue(base * (1 - self.dis_pct.value() / 100))
+        self.line_total.setValue(self.qty.value() * self.pur_rate.value())
 
     def _add_item(self):
         if not self.product.record:
