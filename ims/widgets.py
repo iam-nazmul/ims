@@ -78,7 +78,7 @@ def confirm(parent, msg: str) -> bool:
 
 
 class SearchBar(QWidget):
-    """'Enter text to search...' + Find + Clear, like every list form in the video."""
+    """'Enter text to search...' + Find + Clear; also searches live while typing."""
     searched = Signal(str)
 
     def __init__(self, parent=None):
@@ -88,6 +88,11 @@ class SearchBar(QWidget):
         self.edit = QLineEdit()
         self.edit.setPlaceholderText("Enter text to search...")
         self.edit.returnPressed.connect(self._find)
+        self._typing = QTimer(self)
+        self._typing.setSingleShot(True)
+        self._typing.setInterval(250)
+        self._typing.timeout.connect(self._find)
+        self.edit.textChanged.connect(self._typing.start)
         find = QPushButton("Find")
         find.clicked.connect(self._find)
         clear = QPushButton("Clear")
@@ -97,11 +102,12 @@ class SearchBar(QWidget):
         lay.addWidget(clear)
 
     def _find(self):
+        self._typing.stop()
         self.searched.emit(self.edit.text().strip())
 
     def _clear(self):
         self.edit.clear()
-        self.searched.emit("")
+        self._find()
 
 
 class DataTable(QTableWidget):
