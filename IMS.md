@@ -1,4 +1,4 @@
-# CLAUDE.md
+# IMS.md
 
 Desktop inventory management app: PySide6/PyQt6 + PostgreSQL, single `ims/` package,
 no test suite. User-facing docs live in [README.md](README.md); developer notes per
