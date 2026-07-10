@@ -27,7 +27,26 @@ from the `ims.wmv` demo video of the original "Shahajahan Enterprise" WinForms a
 - **History** — admin-only log of every create/edit/delete
 - **Settings** — one-click database Backup / Restore
 
-## Setup
+## Install (end users)
+
+Download the installer for your OS from the GitHub Releases page (or build one
+with the scripts in [packaging/](packaging/README.md)):
+
+- **Windows** — run `ims-setup-<version>-windows-x64.exe`, then launch **IMS**
+  from the Start menu or desktop shortcut.
+- **Linux** — `sudo apt install ./ims_<version>_amd64.deb`, then launch **IMS**
+  from the app menu (or run `ims`). A portable `.tar.gz` is also provided.
+- **macOS** — open `ims-<version>-macos-<arch>.dmg` and drag **IMS** to
+  Applications. (iOS is not supported — this is a desktop application.)
+
+No separate PostgreSQL install is needed: the app ships its own database server
+and creates the database on first launch (log in with `sajad` / `1234`). All data
+is stored per user **outside** the installation folder — `%LOCALAPPDATA%\IMS` on
+Windows, `~/.local/share/IMS` on Linux, `~/Library/Application Support/IMS` on
+macOS — so it is never lost when the app is updated, reinstalled or uninstalled.
+Use Settings → Backup Database for copies you can move between machines.
+
+## Setup (developers)
 
 ```bash
 python -m venv venv

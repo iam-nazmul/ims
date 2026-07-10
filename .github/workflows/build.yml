@@ -1,0 +1,84 @@
+# Builds installers for Windows, macOS and Linux.
+# Runs on every push of a v* tag (attaches artifacts to the GitHub release)
+# and on manual dispatch (artifacts downloadable from the run page).
+name: build
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Resolve version
+        id: v
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - name: Build installer
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File packaging\windows\build.ps1 -Version "${{ steps.v.outputs.version }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ims-windows
+          path: packaging/windows/output/*.exe
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes 2>/dev/null || true && gh release upload "$GITHUB_REF_NAME" packaging/windows/output/*.exe --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Resolve version
+        id: v
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - name: Build tar.gz + deb
+        run: bash packaging/linux/build.sh "${{ steps.v.outputs.version }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ims-linux
+          path: |
+            packaging/linux/output/*.tar.gz
+            packaging/linux/output/*.deb
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes 2>/dev/null || true && gh release upload "$GITHUB_REF_NAME" packaging/linux/output/*.tar.gz packaging/linux/output/*.deb --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Resolve version
+        id: v
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - name: Build dmg
+        run: bash packaging/macos/build.sh "${{ steps.v.outputs.version }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ims-macos
+          path: packaging/macos/output/*.dmg
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes 2>/dev/null || true && gh release upload "$GITHUB_REF_NAME" packaging/macos/output/*.dmg --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}

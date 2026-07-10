@@ -35,6 +35,10 @@ module live in [ims/README.md](ims/README.md).
                                       next_code()/next_serial(),
                                       company + user session vars)
                     │
+   bootstrap.py — packaged builds only: starts the bundled PostgreSQL
+   (initdb into per-user data dir), sets IMS_DATABASE_URL; no-op in dev.
+   Installers built by packaging/ (see packaging/README.md).
+                    │
         PostgreSQL ims_db — db_schema.sql (re-runnable, seed data)
         migrate_multicompany.sql (company_id + RLS)
         migrate_audit_log.sql (audit triggers → history.py)
@@ -64,3 +68,6 @@ module live in [ims/README.md](ims/README.md).
   class's method docs instead of restating them.
 - Verify by running `venv/bin/python -m ims` (login `sajad` / `1234`); there are no
   automated tests.
+- Files the app writes at runtime (e.g. product images) must go under
+  `bootstrap.media_root()` / `data_root()`, never under the install/bundle dir;
+  read-only bundled files resolve via `bootstrap.resource_root()`.
