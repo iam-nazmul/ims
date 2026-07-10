@@ -9,6 +9,7 @@ architecture diagram and change rules.
 | Module | Contents |
 |---|---|
 | `__main__.py` | Entry point; `--initdb` shells out to `createdb` + `psql -f db_schema.sql`; login → MainWindow loop with logout support |
+| `bootstrap.py` | Embedded PostgreSQL for packaged builds: initdb/start the bundled server, per-user data dirs (`data_root()`, `media_root()`), sets `IMS_DATABASE_URL`. No-op on a dev checkout — see [../packaging/README.md](../packaging/README.md) |
 | `qt.py` | The only place Qt is imported. Tries PySide6, falls back to PyQt6 (`Signal` aliased). Import everything with `from .qt import *` |
 | `db.py` | `Database` wrapper around one shared psycopg2 connection (dict rows). `db()` singleton, `transaction()`, `next_code()`/`next_serial()` (company-scoped), `money()`. Publishes `app.company_id` / `app.username` as session vars for RLS and audit triggers |
 | `widgets.py` | Shared UI: `ListDialog` (list + form CRUD base), `LookupField` (magnifier picker), `SearchBar`, `DataTable`, `dedit`/`dspin`/`pydate` field helpers, `html_table` + `preview_html` (print preview), `info`/`error`/`confirm`, `DIALOG_QSS` |

@@ -2,3 +2,10 @@ ims.wmv
 .env
 venv
 __pycache__
+build/
+packaging/pgsql/
+packaging/dist/
+packaging/icons/
+packaging/windows/output/
+packaging/linux/output/
+packaging/macos/output/

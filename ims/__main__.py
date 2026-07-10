@@ -35,15 +35,18 @@ def main() -> int:
         palette.setColor(getattr(palette.ColorRole, role), QColor(color))
     app.setPalette(palette)
 
+    from .bootstrap import ensure_database, frozen
     try:
+        ensure_database()
         from .db import db
         db()
     except Exception as exc:
+        hint = ("Try restarting the application or your computer."
+                if frozen() else
+                "Create the database with:  python -m ims --initdb\n"
+                "or set IMS_DATABASE_URL, e.g. 'dbname=ims_db user=postgres'.")
         QMessageBox.critical(
-            None, "IMS",
-            f"Cannot connect to PostgreSQL:\n{exc}\n\n"
-            "Create the database with:  python -m ims --initdb\n"
-            "or set IMS_DATABASE_URL, e.g. 'dbname=ims_db user=postgres'.")
+            None, "IMS", f"Cannot start the database:\n{exc}\n\n{hint}")
         return 1
 
     from .login import LoginDialog

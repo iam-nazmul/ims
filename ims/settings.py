@@ -6,6 +6,7 @@ import subprocess
 from datetime import date
 
 from .qt import *
+from .bootstrap import SUBPROCESS_FLAGS
 from .db import db, reset_connection
 from .widgets import DIALOG_QSS, info, error, confirm
 
@@ -55,7 +56,7 @@ class BackupDatabaseDialog(QDialog):
             result = subprocess.run(
                 ["pg_dump", "--no-owner", "--no-privileges", "--clean", "--if-exists",
                  "-f", path, db().dsn],
-                capture_output=True, text=True, timeout=120)
+                capture_output=True, text=True, timeout=120, creationflags=SUBPROCESS_FLAGS)
         except FileNotFoundError:
             error(self, "pg_dump was not found. Make sure the PostgreSQL client tools are installed.")
             return
@@ -132,7 +133,7 @@ class RestoreDatabaseDialog(QDialog):
         try:
             result = subprocess.run(
                 ["psql", "-v", "ON_ERROR_STOP=1", "-f", path, db().dsn],
-                capture_output=True, text=True, timeout=120)
+                capture_output=True, text=True, timeout=120, creationflags=SUBPROCESS_FLAGS)
         except FileNotFoundError:
             error(self, "psql was not found. Make sure the PostgreSQL client tools are installed.")
             return

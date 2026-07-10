@@ -8,11 +8,13 @@ import shutil
 
 from .qt import *
 from .db import db, money, set_current_company, current_company_id
-from .widgets import (DIALOG_QSS, ListDialog, LookupField, MEDIA_DIR, dedit, pydate,
+from .widgets import (DIALOG_QSS, ListDialog, LookupField, dedit, pydate,
                       dspin, info, error)
 
-REPO_ROOT = os.path.dirname(MEDIA_DIR)
-PRODUCT_IMAGE_DIR = os.path.join(MEDIA_DIR, "images", "products")
+from .bootstrap import media_root
+
+REPO_ROOT = media_root()
+PRODUCT_IMAGE_DIR = os.path.join(REPO_ROOT, "media", "images", "products")
 PRODUCT_IMAGE_RELDIR = "media/images/products"
 
 
