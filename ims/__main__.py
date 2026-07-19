@@ -20,8 +20,11 @@ def main() -> int:
     if "--initdb" in sys.argv:
         return initdb()
 
-    from .qt import QApplication, QMessageBox, QColor
+    from .qt import QApplication, QMessageBox, QColor, QIcon
     app = QApplication(sys.argv)
+    icon = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "media", "icons", "appicon.png")
+    app.setWindowIcon(QIcon(icon))
     # Force a light look so the OS dark theme never bleeds into the WinForms-style UI.
     app.setStyle("Fusion")
     palette = app.style().standardPalette()
