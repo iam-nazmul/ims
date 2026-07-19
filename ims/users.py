@@ -10,10 +10,11 @@ from .widgets import DIALOG_QSS, ListDialog, info, error, confirm
 
 ROLES = ["Admin", "Manager", "Supervisor", "Staff"]
 
-# Top-level menus that are gated by role. Admin always has all of them;
-# Settings and About are always visible to everyone regardless of this table.
+# Menu items gated by role. Admin always has all of them; Settings and About
+# are always visible to everyone regardless of this table. "Cash Collection"
+# is a single menu item grantable on its own; "Account Management" implies it.
 MENU_KEYS = ["Basic", "Employee", "Customer and Supplier", "Inventory Management",
-             "Account Management", "MIS Report"]
+             "Account Management", "Cash Collection", "MIS Report"]
 
 
 def get_role_permissions(role: str) -> set[str]:

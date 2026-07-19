@@ -24,7 +24,7 @@ NAV_BUTTONS = [
     ("Purchase\nOrder", "#41d0c4", "#00332f", "Inventory Management"),
     ("Sales Order", "#fdf3f3", "#8b1a1a", "Inventory Management"),
     ("Credit Sales", "#f8d2f1", "#5c1049", "Inventory Management"),
-    ("Cash\nCollection", "#eeb0f4", "#3c1050", "Account Management"),
+    ("Cash\nCollection", "#eeb0f4", "#3c1050", "Cash Collection"),
     ("Cash\nDelivery", "#e9c4d9", "#4d1030", "Account Management"),
     ("Income", "#c7af78", "#3a2c00", "Account Management"),
     ("Expense", "#d1b399", "#3a2410", "Account Management"),
@@ -69,6 +69,8 @@ class MainWindow(QMainWindow):
         role = self.user.get("role", "Staff")
         self.is_admin = role == "Admin"
         self.permitted = set(MENU_KEYS) if self.is_admin else get_role_permissions(role)
+        if "Account Management" in self.permitted:
+            self.permitted.add("Cash Collection")
 
         basic_config = [
             ("System Information", lambda: SystemInfoDialog(self).exec()),
@@ -99,15 +101,16 @@ class MainWindow(QMainWindow):
                 ("Purchase Return", self.open_purchase_returns),
                 ("Damage Product", self.open_damage_products),
             ] if "Inventory Management" in self.permitted else [],
-            "Account Management": [
+            "Account Management": ([
                 ("Cash Collection", self.open_collections),
+            ] if "Cash Collection" in self.permitted else []) + ([
                 ("Cash Delivery", self.open_deliveries),
                 ("Bank Transaction", lambda: BankTransactionsDialog(self).exec()),
                 ("Investment Heads", lambda: InvestmentHeadsDialog(self).exec()),
                 ("Share Investments", lambda: InvestmentsDialog(self).exec()),
                 ("Income", self.open_income),
                 ("Expense", self.open_expense),
-            ] if "Account Management" in self.permitted else [],
+            ] if "Account Management" in self.permitted else []),
             "MIS Report": [
                 ("Daily Sales Report", lambda: Reports(self).daily_sales()),
                 ("Daily Purchase Report", lambda: Reports(self).daily_purchase()),

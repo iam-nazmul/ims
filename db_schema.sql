@@ -417,7 +417,8 @@ INSERT INTO role_permissions (role, menu_key) VALUES
 ('Manager', 'Inventory Management'), ('Manager', 'Account Management'), ('Manager', 'MIS Report'),
 ('Supervisor', 'Customer and Supplier'), ('Supervisor', 'Inventory Management'),
 ('Supervisor', 'Account Management'), ('Supervisor', 'MIS Report'),
-('Staff', 'Customer and Supplier'), ('Staff', 'Inventory Management');
+('Staff', 'Customer and Supplier'), ('Staff', 'Inventory Management'),
+('Staff', 'Cash Collection');
 
 INSERT INTO companies (code, name, address, telephone_no, start_date)
 VALUES ('00001', 'Shahajahan Enterprise', 'Kesorhat, Mohanpur, Rajshahi',
